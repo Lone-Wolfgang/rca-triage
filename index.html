@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>RCA Triage — AT&T Network Fault Overlay (Live)</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  /* BASE_SIZE — master text-size knob. Every sidebar + tooltip font-size scales
+     off this. Bump it up/down to tune all text at once. (Old default was 11px.) */
+  --base-size:18px;
+  --bg:#0a0e14; --panel:#111721; --panel-2:#0d131c; --line:#1e2a3a;
+  --ink:#e6edf3; --ink-dim:#8b9bb0; --ink-faint:#5a6b80;
+  --accent:#FF6B35; --att:#009FDB; --att-navy:#00388F;
+  --att-deep-blue:#0055A4; --pale-sky:#87CEEB; --sky:#4682B4; --teal:#20B2AA;
+  --c1:#FF6B35; --c2:#0055A4; --c3:#20B2AA; --c4:#4682B4;
+  --c5:#87CEEB; --c6:#FF8C42; --c7:#9B59B6; --c8:#2ECC71;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif}
+#app{display:grid;grid-template-columns:360px 1fr 340px;grid-template-rows:auto 1fr;height:100vh}
+header{grid-column:1/4;border-bottom:1px solid var(--line);background:var(--panel-2);
+  padding:14px 22px;display:flex;align-items:baseline;gap:18px}
+header h1{font-size:calc(var(--base-size) * 1.364);font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin:0}
+header h1 b{color:var(--att)}
+header .sub{font-size:calc(var(--base-size) * 1.0);color:var(--ink-faint);letter-spacing:.08em;
+  font-family:"IBM Plex Mono",ui-monospace,monospace}
+header .spacer{flex:1}
+header .stat{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:calc(var(--base-size) * 1.0);color:var(--ink-dim)}
+header .stat b{color:var(--ink);font-weight:600}
+#map{grid-column:2;grid-row:2;background:var(--bg);position:relative}
+#btn-reset{position:absolute;bottom:24px;left:12px;z-index:500;display:none;
+  background:var(--panel);border:1px solid var(--att);color:var(--ink);
+  padding:11px 20px;border-radius:4px;cursor:pointer;font-size:calc(var(--base-size) * 1.818);
+  font-family:"IBM Plex Mono",monospace;letter-spacing:.06em;transition:.15s}
+#btn-reset:hover{background:var(--att);color:#fff}
+aside.left{grid-column:1;grid-row:2;background:var(--panel);border-right:1px solid var(--line);
+  overflow-y:auto;padding:0}
+aside.right{grid-column:3;grid-row:2;background:var(--panel);border-left:1px solid var(--line);
+  overflow-y:auto;padding:0}
+.sec{padding:16px 18px;border-bottom:1px solid var(--line)}
+.sec h2{font-size:calc(var(--base-size) * 0.909);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);
+  margin:0 0 12px;font-weight:600}
+label.fld{display:block;font-size:calc(var(--base-size) * 1.0);color:var(--ink-dim);margin:0 0 6px}
+input[type=range]{width:100%;accent-color:var(--att)}
+.dialval{font-family:"IBM Plex Mono",monospace;color:var(--accent);font-size:calc(var(--base-size) * 1.091)}
+.hint{font-size:calc(var(--base-size) * 1.0);color:var(--ink-faint);line-height:1.5}
+.legend{display:flex;flex-direction:column;gap:5px}
+h2.rc-head{display:flex;align-items:center;justify-content:space-between}
+.rc-reset{font-size:calc(var(--base-size) * 0.818);letter-spacing:.1em;color:var(--att);cursor:pointer;
+  text-transform:uppercase;font-weight:600}
+.rc-reset:hover{color:var(--accent);text-decoration:underline}
+.rc-reset[hidden]{display:none}
+.lrow{display:flex;align-items:center;gap:9px;font-size:calc(var(--base-size) * 1.045);
+  padding:3px 4px;border-radius:3px;color:var(--ink-dim);
+  cursor:pointer;user-select:none;transition:opacity .12s,background .12s}
+.lrow:hover{background:var(--panel-2)}
+.lrow.off{opacity:.32}
+.lrow.off .lbl{color:var(--ink-dim)}
+.lrow .dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+.lrow .lbl{flex:1;color:var(--ink)}
+.lrow .cnt{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.955);color:var(--ink-faint)}
+.lrow .desc{display:block;font-size:calc(var(--base-size) * 0.909);color:var(--ink-faint);margin-top:1px}
+.blend-row{display:grid;grid-template-columns:30px 1fr 26px;gap:8px;align-items:center;
+  font-size:calc(var(--base-size) * 1.0);margin-bottom:5px}
+.blend-row .bk{font-family:"IBM Plex Mono",monospace;color:var(--ink)}
+.blend-row .bk i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.blend-row input{accent-color:var(--att)}
+.blend-row .bw{font-family:"IBM Plex Mono",monospace;color:var(--ink-faint);text-align:right}
+/* twistie dropdowns (Fault Blend, Severity) */
+.twist>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
+  user-select:none;outline:none}
+.twist>summary::-webkit-details-marker{display:none}
+.twist>summary::before{content:"▸";color:var(--ink-faint);font-size:calc(var(--base-size) * 0.909);transition:transform .15s;
+  flex:0 0 auto}
+.twist[open]>summary::before{transform:rotate(90deg)}
+.twist>summary h2{margin:0;flex:1}
+.twist>summary:hover h2{color:var(--ink-dim)}
+.twist-body{margin-top:12px}
+.btn{width:100%;background:var(--att);color:#fff;border:none;padding:9px;font-size:calc(var(--base-size) * 1.0);
+  letter-spacing:.08em;cursor:pointer;border-radius:3px;font-weight:600;margin-top:8px;
+  font-family:"IBM Plex Mono",monospace;text-transform:uppercase;transition:.15s}
+.btn:hover{background:var(--att-navy)}
+.btn[disabled]{opacity:.5;cursor:default}
+#rca .empty{color:var(--ink-faint);font-size:calc(var(--base-size) * 1.091);line-height:1.6}
+.rca-id{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 1.0);color:var(--accent);
+  word-break:break-all;margin-bottom:10px}
+.rca-class{display:inline-flex;align-items:center;gap:7px;font-size:calc(var(--base-size) * 1.182);font-weight:600;margin-bottom:4px}
+.rca-class .dot{width:13px;height:13px;border-radius:50%}
+.rca-cause{font-size:calc(var(--base-size) * 1.091);color:var(--ink-dim);line-height:1.5;margin:6px 0 14px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:calc(var(--base-size) * 1.045)}
+.kv .k{color:var(--ink-faint)}
+.kv .v{font-family:"IBM Plex Mono",monospace;color:var(--ink);text-align:right}
+.impact-big{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 2.545);font-weight:600;
+  color:var(--accent);line-height:1.1;letter-spacing:-.01em}
+.impact-sub{font-size:calc(var(--base-size) * 0.955);color:var(--ink-faint);margin-top:3px;letter-spacing:.04em}
+.hs-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+h2.hs-head{display:flex;align-items:center;justify-content:space-between}
+.hs-sub{font-size:calc(var(--base-size) * 0.85);color:var(--ink-faint);line-height:1.5;margin-top:2px}
+#detect-hotspots{font-size:calc(var(--base-size) * 0.78);letter-spacing:.1em;color:var(--att);
+  cursor:pointer;text-transform:uppercase;font-weight:600}
+#detect-hotspots:hover{color:var(--accent);text-decoration:underline}
+.hs-row{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;
+  padding:7px 9px;border:1px solid var(--line);border-radius:4px;cursor:pointer;
+  background:var(--panel-2);transition:.12s}
+.hs-row:hover{border-color:var(--att);background:var(--panel)}
+.hs-rank{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 1.05);
+  font-weight:600;color:var(--accent);min-width:1.4em;text-align:center}
+.hs-city{font-weight:600;color:var(--ink);font-size:calc(var(--base-size) * 1.0);line-height:1.2}
+.hs-meta{font-size:calc(var(--base-size) * 0.82);color:var(--ink-faint);margin-top:2px}
+.hs-imp{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.95);
+  color:var(--att);text-align:right;white-space:nowrap}
+.hs-empty{font-size:calc(var(--base-size) * 0.9);color:var(--ink-faint);line-height:1.5;margin-top:10px}
+.note{font-size:calc(var(--base-size) * 0.955);color:var(--ink-faint);line-height:1.5;padding:14px 18px;background:var(--panel-2)}
+.note b{color:var(--ink-dim)}
+.ramp{display:flex;height:9px;border-radius:2px;overflow:hidden;margin:8px 0 5px}
+.ramp i{flex:1}
+.ramp-lbl{display:flex;justify-content:space-between;font-size:calc(var(--base-size) * 0.864);
+  font-family:"IBM Plex Mono",monospace;color:var(--ink-faint)}
+.leaflet-popup-content-wrapper,.leaflet-tooltip{background:var(--panel);color:var(--ink);
+  border:1px solid var(--line)}
+.leaflet-tooltip{font-size:calc(var(--base-size) * 1.0)}
+.leaflet-tooltip .tt-row{font-size:calc(var(--base-size) * 0.95)}
+.leaflet-container{font-family:inherit;background:var(--bg)}
+.leaflet-container.fault-hover{cursor:pointer}
+#splash{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;
+  justify-content:center;flex-direction:column;gap:14px;z-index:9999;color:var(--ink-dim);
+  font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 1.091)}
+#splash .bar{width:200px;height:3px;background:var(--line);border-radius:2px;overflow:hidden}
+#splash .bar i{display:block;height:100%;width:40%;background:var(--att);
+  animation:slide 1s infinite ease-in-out}
+@keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
+@media(max-width:980px){#app{grid-template-columns:1fr}aside{display:none}#map{grid-column:1}}
+</style>
+</head>
+<body>
+<div id="splash"><div>LOADING CELL POOL…</div><div class="bar"><i></i></div></div>
+<div id="app">
+  <header>
+    <h1>RCA<b>·</b>TRIAGE</h1>
+    <span class="sub">AT&amp;T NETWORK FAULT OVERLAY · LIVE</span>
+    <span class="spacer"></span>
+    <span class="stat">SHOWN <b id="st-shown">—</b></span>
+    <span class="stat">VIEW <b id="st-view">US</b></span>
+    <span class="stat">SEV <b id="st-sev">1.0%</b></span>
+    <span class="stat">SEED <b id="st-seed">0</b></span>
+  </header>
+  <aside class="left">
+    <div class="sec" id="hotspots">
+      <h2 class="hs-head">Hot Spots<a id="detect-hotspots" class="rc-reset">re-detect</a></h2>
+      <div class="hs-sub">Top impacted ~50-mile areas in the current view.</div>
+      <div class="hs-list" id="hs-list"></div>
+    </div>
+    <div class="sec" id="impact">
+      <h2>Impacted Customers</h2>
+      <div class="impact-big" id="impact-total">—</div>
+      <div class="impact-sub" id="impact-sub">across faults shown</div>
+    </div>
+  </aside>
+  <div id="map"><button id="btn-reset">← US</button></div>
+  <aside class="right">
+    <div class="sec">
+      <h2>Display Filter · saturation</h2>
+      <label class="fld">Show faults up to <span class="dialval" id="sev-lbl">1.0%</span> saturation</label>
+      <input type="range" id="sev" min="1" max="10" step="1" value="2"/>
+    </div>
+
+    <div class="sec">
+      <h2>Regional Severity</h2>
+      <div class="ramp" id="ramp"></div>
+      <div class="ramp-lbl"><span>fewer</span><span id="ramp-max">more</span></div>
+      <div class="note" style="padding:10px 0 0;background:none">
+        Color = <b>faulted-cell count</b> shown at current severity (placeholder).
+        Swaps to cost-weighted priority when scoring lands.
+      </div>
+    </div>
+    <div class="sec">
+      <button class="btn" id="apply-blend">Resample</button>
+    </div>
+    <div class="sec">
+      <details class="twist">
+        <summary><h2>Fault Blend · resamples</h2></summary>
+        <div class="twist-body">
+          <div id="blend"></div>
+        </div>
+      </details>
+    </div>
+    <div class="sec">
+      <details class="twist">
+        <summary><h2>Severity · per class</h2></summary>
+        <div class="twist-body">
+          <div id="severity"></div>
+          <div class="note" style="padding:10px 0 0;background:none">
+            Drives <b>Impacted Customers</b> = served × severity × 0.1, shown on fault hover.
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="sec">
+      <h2 class="rc-head">Root Cause<a id="rc-reset" class="rc-reset" hidden>reset</a></h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="sec" id="rca">
+      <h2>Incident Detail</h2>
+      <div class="empty">Hover a fault marker to see its class and customer impact.</div>
+    </div>
+    <div class="note">
+      <b>Simulated overlay.</b> Real AT&amp;T cell locations (OpenCellID) ·
+      real TeleLogs fault classes · <b>fabricated</b> pairing of fault→location.
+      Not real outage data; faults are resampled in-browser to rank where impact concentrates.
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+import { resample, VALID_CLASSES } from "./resample.js";
+
+const CLASSES = {
+  C1:{n:'Downtilt too large',d:'Weak coverage at the far cell edge'},
+  C2:{n:'Over-shooting',d:'Serving coverage exceeds 1 km'},
+  C3:{n:'Neighbor serves better',d:'A neighbor offers higher throughput'},
+  C4:{n:'Overlapping coverage',d:'Non-colocated co-frequency overlap'},
+  C5:{n:'Frequent handovers',d:'Handover churn degrades performance'},
+  C6:{n:'PCI mod-30 collision',d:'Same PCI mod 30 → interference'},
+  C7:{n:'High vehicle speed',d:'Test speed > 40 km/h impacts throughput'},
+  C8:{n:'Too few scheduled RBs',d:'Avg scheduled RBs < 160'},
+};
+const css=(v)=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+VALID_CLASSES.forEach((c,i)=>{CLASSES[c].c=css('--c'+(i+1));});
+
+const NAME2CODE={
+  "Alabama":"AL","Arizona":"AZ","Arkansas":"AR","California":"CA","Colorado":"CO",
+  "Connecticut":"CT","Delaware":"DE","District of Columbia":"DC","Florida":"FL","Georgia":"GA",
+  "Idaho":"ID","Illinois":"IL","Indiana":"IN","Iowa":"IA","Kansas":"KS","Kentucky":"KY",
+  "Louisiana":"LA","Maine":"ME","Maryland":"MD","Massachusetts":"MA","Michigan":"MI","Minnesota":"MN",
+  "Mississippi":"MS","Missouri":"MO","Montana":"MT","Nebraska":"NE","Nevada":"NV","New Hampshire":"NH",
+  "New Jersey":"NJ","New Mexico":"NM","New York":"NY","North Carolina":"NC","North Dakota":"ND",
+  "Ohio":"OH","Oklahoma":"OK","Oregon":"OR","Pennsylvania":"PA","Rhode Island":"RI",
+  "South Carolina":"SC","South Dakota":"SD","Tennessee":"TN","Texas":"TX","Utah":"UT","Vermont":"VT",
+  "Virginia":"VA","Washington":"WA","West Virginia":"WV","Wisconsin":"WI","Wyoming":"WY",
+};
+const STATE_TO_QUADRANT={
+  CT:"Northeast",ME:"Northeast",MA:"Northeast",NH:"Northeast",RI:"Northeast",VT:"Northeast",
+  NJ:"Northeast",NY:"Northeast",PA:"Northeast",
+  IL:"Midwest",IN:"Midwest",MI:"Midwest",OH:"Midwest",WI:"Midwest",IA:"Midwest",KS:"Midwest",
+  MN:"Midwest",MO:"Midwest",NE:"Midwest",ND:"Midwest",SD:"Midwest",
+  DE:"South",FL:"South",GA:"South",MD:"South",NC:"South",SC:"South",VA:"South",DC:"South",
+  WV:"South",AL:"South",KY:"South",MS:"South",TN:"South",AR:"South",LA:"South",OK:"South",TX:"South",
+  AZ:"West",CO:"West",ID:"West",MT:"West",NV:"West",NM:"West",UT:"West",WY:"West",
+  CA:"West",OR:"West",WA:"West",
+};
+const NON_CONUS=new Set(["AK","HI","PR","GU","VI","AS","MP"]);
+const CONUS_BOUNDS=L.latLngBounds([24.4,-124.8],[49.4,-66.9]);
+
+// ---- state ----
+let POOL=null, STATES_GEO=null;
+let faults=[], cutIndex=[];
+let SEED=0;
+// Fresh 32-bit seed → a new faulted population each Resample.
+function newSeed(){ return (Math.random()*0x100000000)>>>0; }
+const dialStops=Array.from({length:10},(_,i)=>(i+1)*0.005);
+let sevIdx=1;
+let nav={level:'us'};
+
+// ---- per-class severity (1..10 each) → drives Impacted Customers ----
+const severity={};                       // {C1:5, ..., C8:5}; default 5
+VALID_CLASSES.forEach(k=>severity[k]=5);
+// Impacted Customers = served × severity × 0.1, rounded to whole customers.
+function impactedCustomers(f){
+  const served=+f.estimated_population_served||0;
+  const sev=severity[f.answer]||0;
+  return Math.round(served*sev*0.1);
+}
+
+// ---- Hot Spot Detection -----------------------------------------------------
+// Bin the in-view faults into ~50-mile grid cells (cosine-corrected so cells are
+// roughly square in real distance), summing impacted customers. Then score each
+// occupied cell by its 3×3 neighbourhood (≈ a 50-mile catchment, heals the hard
+// grid seams). Rank the super-cells; name each by an impacted-weighted vote over
+// its faults' nearest_city. Returns the top-N hotspots.
+//
+// Respects all active filters automatically: it operates on faultsInView(), the
+// same set the markers/legend/aggregate use (display dial + class toggles + drill).
+const HOTSPOT_MILES=50;
+const MILES_PER_DEG_LAT=69.0;                 // ~constant
+function hotspotGridDeg(){
+  // square-ish cell: lat span fixed; lon span corrected per latitude at render.
+  return HOTSPOT_MILES/MILES_PER_DEG_LAT;     // ≈0.725° lat per cell
+}
+
+function detectHotspots(topN=5){
+  const fs=faultsInView();
+  if(!fs.length) return [];
+  const dLat=hotspotGridDeg();
+  // Use a reference latitude (mean) for longitude scaling so columns line up.
+  let latSum=0; for(const f of fs) latSum+=f.latitude;
+  const refLat=latSum/fs.length;
+  const dLon=dLat/Math.max(0.2,Math.cos(refLat*Math.PI/180));  // wider cells, fewer cols
+
+  // 1) bin faults into cells, accumulating impact + city votes + centroid.
+  const cells=new Map();   // key "r,c" -> {imp, n, latSum, lonSum, cityImp:Map}
+  const key=(r,c)=>r+','+c;
+  for(const f of fs){
+    const r=Math.floor(f.latitude/dLat);
+    const c=Math.floor(f.longitude/dLon);
+    const k=key(r,c);
+    let cell=cells.get(k);
+    if(!cell){ cell={r,c,imp:0,n:0,latSum:0,lonSum:0,cityImp:new Map()}; cells.set(k,cell); }
+    const imp=impactedCustomers(f);
+    cell.imp+=imp; cell.n++; cell.latSum+=f.latitude; cell.lonSum+=f.longitude;
+    const city=f.nearest_city||'';
+    if(city){
+      // impacted-weighted vote (with a small +1 so zero-impact faults still count)
+      cell.cityImp.set(city,(cell.cityImp.get(city)||0)+imp+1);
+    }
+  }
+
+  // 2) score each occupied cell by its 3×3 neighbourhood; aggregate votes too.
+  const scored=[];
+  for(const cell of cells.values()){
+    let imp=0,n=0,latW=0,lonW=0;
+    const votes=new Map();
+    for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+      const nb=cells.get(key(cell.r+dr,cell.c+dc));
+      if(!nb) continue;
+      imp+=nb.imp; n+=nb.n; latW+=nb.latSum; lonW+=nb.lonSum;
+      for(const [city,w] of nb.cityImp) votes.set(city,(votes.get(city)||0)+w);
+    }
+    // winning city = max impacted-weighted vote
+    let topCity='', topW=-1;
+    for(const [city,w] of votes){ if(w>topW){ topW=w; topCity=city; } }
+    scored.push({
+      imp, faults:n,
+      lat:latW/Math.max(1,n), lon:lonW/Math.max(1,n),
+      city:topCity,
+    });
+  }
+
+  // 3) de-overlap: greedily take the top cell, then skip any later cell whose
+  // centroid falls within ~1.5× the catchment (so adjacent super-cells from one
+  // sprawling metro collapse to a single hotspot), OR that resolves to a city
+  // already taken (name-level backstop). Rank by impacted customers.
+  scored.sort((a,b)=>b.imp-a.imp);
+  const taken=[];
+  const takenCities=new Set();
+  const minSepDeg=dLat*1.5;   // ~75 miles apart
+  for(const s of scored){
+    if(taken.length>=topN) break;
+    if(s.city && takenCities.has(s.city)) continue;   // same metro name already shown
+    const clash=taken.some(t=>{
+      const dla=(t.lat-s.lat), dlo=(t.lon-s.lon)/Math.max(0.2,Math.cos(refLat*Math.PI/180));
+      return Math.hypot(dla,dlo)<minSepDeg;
+    });
+    if(clash) continue;
+    taken.push(s);
+    if(s.city) takenCities.add(s.city);
+  }
+  return taken.map((s,i)=>({rank:i+1, ...s}));
+}
+
+// ---- map: zoom/pan enabled, but clamped to the current drill context ----
+const map=L.map('map',{
+  zoomControl:true, attributionControl:false, preferCanvas:true,
+  zoomSnap:0.25, maxBoundsViscosity:1.0,
+});
+map.fitBounds(CONUS_BOUNDS);
+L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_nolabels/{z}/{x}/{y}.png',
+  {subdomains:'abcd'}).addTo(map);
+L.tileLayer('https://cartodb-basemaps-{s}.global.ssl.fastly.net/dark_only_labels/{z}/{x}/{y}.png',
+  {subdomains:'abcd',opacity:.5,pane:'shadowPane'}).addTo(map);
+
+// Dedicated pane for the choropleth: sits visually BELOW the canvas markers
+// (lower z-index) but stays interactive, so region/state clicks always register.
+// This is the fix for "drill stops working after returning to US" — previously
+// bringToBack() buried the clickable layer under the markers/tiles.
+map.createPane('choroPane');
+map.getPane('choroPane').style.zIndex = 350;        // overlayPane=400, markerPane=600
+map.getPane('choroPane').style.pointerEvents = 'auto';
+
+const ptRenderer=L.canvas({padding:0.5});
+let ptLayer=null, choro=null;
+let hoverFault=null;   // fault currently under the cursor (for the shared tooltip)
+
+function rampColor(t){
+  t=Math.max(0,Math.min(1,t));
+  const a=[18,28,40],b=[0,159,219];
+  return `rgb(${Math.round(a[0]+(b[0]-a[0])*t)},${Math.round(a[1]+(b[1]-a[1])*t)},${Math.round(a[2]+(b[2]-a[2])*t)})`;
+}
+
+// SPEC-GAP: region_score placeholder == shown fault count. Cost-weighting plugs in here.
+function shownFaults(){ return faults.slice(0,cutIndex[sevIdx]); }
+
+// ---- root-cause class filter (legend toggles) ----
+const hiddenClasses=new Set();   // classes toggled OFF; empty => all shown
+const classVisible=(k)=>!hiddenClasses.has(k);
+
+// which faults belong to the current view (respects class filter)
+function faultsInView(){
+  const s=shownFaults().filter(f=>classVisible(f.answer));
+  if(nav.level==='region') return s.filter(f=>f.quadrant===nav.region);
+  return s;
+}
+
+// state geojson features for the current view
+function viewStateFeatures(){
+  return STATES_GEO.features.map(f=>{
+    const code=NAME2CODE[f.properties.name];
+    if(!code||NON_CONUS.has(code))return null;
+    const q=STATE_TO_QUADRANT[code]||'';
+    if(nav.level==='region'&&q!==nav.region)return null;
+    return {feat:f,code,quad:q,name:f.properties.name};
+  }).filter(Boolean);
+}
+
+// ---- choropleth: colour by region score (US) or state score (region) ----
+function drawChoro(){
+  if(choro){map.removeLayer(choro);choro=null;}
+  const s=shownFaults().filter(f=>classVisible(f.answer));
+  const byQuad={}, byState={};
+  for(const f of s){
+    byQuad[f.quadrant]=(byQuad[f.quadrant]||0)+1;
+    byState[f.state]=(byState[f.state]||0)+1;
+  }
+  const sf=viewStateFeatures();
+  const features=nav.level==='us'
+    ? sf.map(({feat,code,quad,name})=>({...feat, properties:{name,code,quad,score:byQuad[quad]||0}}))
+    : sf.map(({feat,code,quad,name})=>({...feat, properties:{name,code,quad,score:byState[code]||0}}));
+  const mx=Math.max(1,...features.map(f=>f.properties.score));
+  document.getElementById('ramp-max').textContent=mx+' shown';
+
+  choro=L.geoJSON({type:'FeatureCollection',features},{
+    pane:'choroPane',
+    style:f=>({fillColor:rampColor(f.properties.score/mx),fillOpacity:.55,color:'#ffffff',weight:1.5}),
+    onEachFeature:(f,layer)=>{
+      const p=f.properties;
+      layer.on('mouseover',()=>layer.setStyle({fillOpacity:.82,weight:2,color:'#ffffff'}));
+      layer.on('mouseout',()=>layer.setStyle({fillOpacity:.55,weight:1.5,color:'#ffffff'}));
+      if(nav.level==='us') layer.on('click',()=>drillTo({level:'region',region:p.quad}));
+    }
+  }).addTo(map);
+}
+// Tooltip HTML for a fault: class + label, customers served, customers impacted.
+function tipHtml(f){
+  const meta=CLASSES[f.answer]||{c:'#888',n:f.answer};
+  const served=+f.estimated_population_served||0;
+  const impacted=impactedCustomers(f);
+  return `<div style="min-width:150px">
+    <div style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:4px">
+      <span style="width:10px;height:10px;border-radius:50%;background:${meta.c};display:inline-block"></span>
+      ${f.answer} · ${meta.n}</div>
+    <div class="tt-row" style="display:grid;grid-template-columns:1fr auto;gap:2px 10px">
+      <span style="color:var(--ink-faint)">Customers served</span>
+      <span style="font-family:'IBM Plex Mono',monospace">${served.toLocaleString()}</span>
+      <span style="color:var(--ink-faint)">Customers impacted</span>
+      <span style="font-family:'IBM Plex Mono',monospace;color:var(--accent)">${impacted.toLocaleString()}</span>
+    </div></div>`;
+}
+
+let viewFaults=[];   // flat list of faults currently drawn (for hover hit-testing)
+
+function drawPoints(){
+  if(ptLayer){map.removeLayer(ptLayer);ptLayer=null;}
+  const inView=faultsInView();
+  viewFaults=inView;
+  const radius=nav.level==='region'?4:2.5;
+  const opacity=nav.level==='region'?.92:.75;
+  const layers=inView.map(f=>{
+    const meta=CLASSES[f.answer]||{c:'#888'};
+    return L.circleMarker([f.latitude,f.longitude],{
+      renderer:ptRenderer, radius,
+      fillColor:meta.c, color:'#0a0e14', weight:.6,
+      fillOpacity:opacity, interactive:false,
+    });
+  });
+  ptLayer=L.layerGroup(layers).addTo(map);
+  // Keep markers click-transparent so region drill-in (choropleth below) still works.
+  if(ptRenderer._container) ptRenderer._container.style.pointerEvents='none';
+  document.getElementById('st-shown').textContent=inView.length.toLocaleString();
+}
+
+// ---- hover: map-level mousemove hit-test → one shared tooltip. This avoids a
+// second interactive canvas pane (which would block choropleth drill clicks). ----
+const hoverTip=L.tooltip({sticky:false,direction:'top',opacity:1,offset:[0,-6]});
+function nearestFault(latlng){
+  if(!viewFaults.length) return null;
+  const p=map.latLngToContainerPoint(latlng);
+  const hitPx=nav.level==='region'?7:5;   // grab radius in pixels
+  let best=null, bestD=hitPx*hitPx;
+  for(const f of viewFaults){
+    const q=map.latLngToContainerPoint([f.latitude,f.longitude]);
+    const dx=q.x-p.x, dy=q.y-p.y, d=dx*dx+dy*dy;
+    if(d<=bestD){ bestD=d; best=f; }
+  }
+  return best;
+}
+map.on('mousemove',(e)=>{
+  const f=nearestFault(e.latlng);
+  if(f){
+    if(f!==hoverFault){ hoverFault=f; hoverTip.setContent(tipHtml(f)); }
+    hoverTip.setLatLng([f.latitude,f.longitude]);
+    if(!map.hasLayer(hoverTip)) hoverTip.addTo(map);
+    L.DomUtil.addClass(map.getContainer(),'fault-hover');
+  } else if(hoverFault){
+    hoverFault=null;
+    if(map.hasLayer(hoverTip)) map.removeLayer(hoverTip);
+    L.DomUtil.removeClass(map.getContainer(),'fault-hover');
+  }
+});
+map.on('mouseout',()=>{
+  hoverFault=null;
+  if(map.hasLayer(hoverTip)) map.removeLayer(hoverTip);
+});
+
+// Aggregate Impacted Customers over the faults currently shown (respects the
+// display filter, class toggles, and region drill via faultsInView). Tooltips
+// recompute from live severity[] on the next hover, so no pinning is needed.
+function updateImpactTotal(){
+  const fs=faultsInView();
+  let total=0;
+  for(const f of fs) total+=impactedCustomers(f);
+  const el=document.getElementById('impact-total');
+  if(el) el.textContent=total.toLocaleString();
+  const sub=document.getElementById('impact-sub');
+  if(sub) sub.textContent=`across ${fs.length.toLocaleString()} fault${fs.length===1?'':'s'} shown`;
+}
+
+// ---- Hot Spots UI ----------------------------------------------------------
+let hsLayer=null;        // highlight circles for detected hotspots
+let lastHotspots=[];
+
+function renderHotspots(list){
+  lastHotspots=list;
+  const el=document.getElementById('hs-list');
+  if(!el) return;
+  if(!list.length){
+    el.innerHTML=`<div class="hs-empty">No faults in the current view. Resample or widen the filters to populate hot spots.</div>`;
+    return;
+  }
+  el.innerHTML=list.map(h=>{
+    const place=h.city ? h.city : `${h.lat.toFixed(2)}, ${h.lon.toFixed(2)}`;
+    return `<div class="hs-row" data-rank="${h.rank}">
+      <span class="hs-rank">${h.rank}</span>
+      <span><span class="hs-city">${place}</span>
+        <span class="hs-meta">${h.faults.toLocaleString()} faults · ~50 mi</span></span>
+      <span class="hs-imp">${h.imp.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.hs-row').forEach(row=>{
+    row.onclick=()=>focusHotspot(+row.dataset.rank);
+  });
+}
+
+function drawHotspotCircles(list){
+  if(hsLayer){ map.removeLayer(hsLayer); hsLayer=null; }
+  if(!list.length) return;
+  const radiusM=HOTSPOT_MILES*1609.34;
+  const layers=list.map(h=>{
+    const c=L.circle([h.lat,h.lon],{
+      radius:radiusM, pane:'choroPane',
+      color:'#FF6B35', weight:2, fillColor:'#FF6B35', fillOpacity:.08,
+      interactive:false,
+    });
+    const m=L.marker([h.lat,h.lon],{
+      icon:L.divIcon({className:'hs-pin',
+        html:`<div style="background:#FF6B35;color:#0a0e14;font-weight:700;
+          font-family:'IBM Plex Mono',monospace;border-radius:50%;width:1.6em;height:1.6em;
+          display:flex;align-items:center;justify-content:center;
+          font-size:calc(var(--base-size) * 0.85);border:2px solid #0a0e14">${h.rank}</div>`,
+        iconSize:[0,0]}),
+      interactive:false,
+    });
+    return L.layerGroup([c,m]);
+  });
+  hsLayer=L.layerGroup(layers).addTo(map);
+}
+
+function focusHotspot(rank){
+  const h=lastHotspots.find(x=>x.rank===rank);
+  if(!h) return;
+  const radiusM=HOTSPOT_MILES*1609.34;
+  map.fitBounds(L.latLng(h.lat,h.lon).toBounds(radiusM*2.2),{animate:true});
+}
+
+function runDetectHotspots(){
+  const link=document.getElementById('detect-hotspots');
+  const prev=link.textContent;
+  link.textContent='detecting…'; link.style.pointerEvents='none';
+  setTimeout(()=>{
+    const list=detectHotspots(5);
+    renderHotspots(list);
+    drawHotspotCircles(list);
+    link.textContent=prev; link.style.pointerEvents='';
+  },10);
+}
+
+// Clear detected hotspots when the underlying fault set changes (resample, filter,
+// drill, severity), so stale circles never linger over a population that's moved.
+function clearHotspots(){
+  lastHotspots=[];
+  if(hsLayer){ map.removeLayer(hsLayer); hsLayer=null; }
+  const el=document.getElementById('hs-list');
+  if(el) el.innerHTML='';
+}
+
+
+// ---- frame ----
+function frameForView(){
+  map.setMaxBounds(null);
+  map.setMinZoom(0);
+  let bounds=CONUS_BOUNDS;
+  if(nav.level==='region'){
+    const sf=viewStateFeatures();
+    if(sf.length) bounds=L.geoJSON({type:'FeatureCollection',features:sf.map(x=>x.feat)}).getBounds().pad(0.05);
+  }
+  const floorZoom=map.getBoundsZoom(bounds);
+  map.fitBounds(bounds,{animate:false});
+  map.setMinZoom(floorZoom);
+  map.setMaxBounds(bounds);
+}
+function updateCrumb(){
+  document.getElementById('st-view').textContent=nav.level==='us'?'US':nav.region;
+  document.getElementById('btn-reset').style.display=nav.level==='us'?'none':'block';
+}
+function drillTo(next){ nav=next; render(); }
+function resetToUS(){ nav={level:'us'}; render(); }
+function showRCA(f){
+  const meta=CLASSES[f.answer]||{c:'#888',n:f.answer,d:''};
+  document.getElementById('rca').innerHTML=`
+    <h2>Incident Detail</h2>
+    <div class="rca-id">${f.cell_global_id}</div>
+    <div class="rca-class"><span class="dot" style="background:${meta.c}"></span>${f.answer} · ${meta.n}</div>
+    <div class="rca-cause">${meta.d}</div>
+    <div class="kv">
+      <div class="k">State</div><div class="v">${f.state||'—'}</div>
+      <div class="k">Region</div><div class="v">${f.quadrant||'—'}</div>
+      <div class="k">Radio</div><div class="v">${f.radio||'—'}</div>
+      <div class="k">Observations</div><div class="v">${(typeof f.samples==='number')?f.samples.toLocaleString():f.samples}</div>
+    </div>`;
+}
+
+function buildLegend(){
+  // counts ignore the class filter so each row shows its own in-view total,
+  // even while toggled off (otherwise a hidden row would read 0).
+  const base=shownFaults().filter(f=>nav.level!=='region'||f.quadrant===nav.region);
+  const counts={}; for(const f of base) counts[f.answer]=(counts[f.answer]||0)+1;
+  const leg=document.getElementById('legend');
+  leg.innerHTML=VALID_CLASSES.map(k=>{
+    const m=CLASSES[k];
+    const off=hiddenClasses.has(k)?' off':'';
+    return `<div class="lrow${off}" data-k="${k}" title="Toggle ${k}">
+      <span class="dot" style="background:${m.c}"></span>
+      <span class="lbl">${k} · ${m.n}<span class="desc">${m.d}</span></span>
+      <span class="cnt">${counts[k]||0}</span></div>`;
+  }).join('');
+  leg.querySelectorAll('.lrow').forEach(row=>{
+    row.onclick=(e)=>{
+      const k=row.dataset.k;
+      if(e.shiftKey){
+        // solo: show only this class — or, if already soloed to it, show all
+        const soloed=hiddenClasses.size===VALID_CLASSES.length-1 && !hiddenClasses.has(k);
+        if(soloed){ hiddenClasses.clear(); }
+        else { hiddenClasses.clear(); for(const c of VALID_CLASSES) if(c!==k) hiddenClasses.add(c); }
+      } else {
+        if(hiddenClasses.has(k)) hiddenClasses.delete(k); else hiddenClasses.add(k);
+      }
+      applyClassFilter();
+    };
+  });
+  document.getElementById('rc-reset').hidden = hiddenClasses.size===0;
+}
+
+// re-render the layers + legend that depend on the class filter
+function applyClassFilter(){ drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); runDetectHotspots(); }
+
+function resetFilters(){ hiddenClasses.clear(); applyClassFilter(); }
+document.getElementById('ramp').innerHTML=Array.from({length:14},(_,i)=>
+  `<i style="background:${rampColor(i/13)}"></i>`).join('');
+
+// ---- blend ----
+function buildBlendControls(){
+  const el=document.getElementById('blend');
+  el.innerHTML=VALID_CLASSES.map(k=>{
+    const m=CLASSES[k];
+    return `<div class="blend-row"><span class="bk"><i style="background:${m.c}"></i>${k}</span>
+      <input type="range" min="0" max="10" step="1" value="5" data-k="${k}"/>
+      <span class="bw" id="bw-${k}">5</span></div>`;
+  }).join('');
+  el.querySelectorAll('input').forEach(inp=>{
+    inp.oninput=()=>{document.getElementById('bw-'+inp.dataset.k).textContent=inp.value;};
+  });
+}
+function currentBlend(){const b={};document.querySelectorAll('#blend input').forEach(i=>b[i.dataset.k]=+i.value);return b;}
+
+// ---- severity (per class) — drives Impacted Customers (live aggregate + next hover) ----
+function buildSeverityControls(){
+  const el=document.getElementById('severity');
+  el.innerHTML=VALID_CLASSES.map(k=>{
+    const m=CLASSES[k];
+    return `<div class="blend-row"><span class="bk"><i style="background:${m.c}"></i>${k}</span>
+      <input type="range" min="1" max="10" step="1" value="${severity[k]}" data-k="${k}"/>
+      <span class="bw" id="sv-${k}">${severity[k]}</span></div>`;
+  }).join('');
+  el.querySelectorAll('input').forEach(inp=>{
+    inp.oninput=()=>{
+      const k=inp.dataset.k;
+      severity[k]=+inp.value;
+      document.getElementById('sv-'+k).textContent=inp.value;
+      updateImpactTotal();   // live aggregate; tooltips recompute on next hover
+      clearHotspots();       // severity changing → prior hotspot impact is stale
+    };
+    inp.onchange=()=>{ runDetectHotspots(); };   // re-detect once the drag settles
+  });
+}
+
+function doResample(blend, seed=SEED){
+  SEED=seed;
+  const out=resample({pool:POOL,blend,seed:SEED});
+  faults=out.faults.sort((a,b)=>a.threshold-b.threshold);
+  cutIndex=dialStops.map(s=>{let lo=0,hi=faults.length;
+    while(lo<hi){const m=(lo+hi)>>1;if(faults[m].threshold<=s)lo=m+1;else hi=m;}return lo;});
+  document.getElementById('st-seed').textContent=SEED;
+}
+
+// ---- render: everything that depends on nav + dial + resample ----
+function render(){ frameForView(); drawChoro(); drawPoints(); buildLegend(); updateCrumb(); updateImpactTotal(); runDetectHotspots(); }
+
+// ---- wire knobs ----
+function pct(x){return (x*100).toFixed(1)+'%';}
+document.getElementById('sev').oninput=(e)=>{
+  sevIdx=+e.target.value-1; const v=dialStops[sevIdx];
+  document.getElementById('sev-lbl').textContent=pct(v);
+  document.getElementById('st-sev').textContent=pct(v);
+  drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); runDetectHotspots();   // display-only
+};
+document.getElementById('btn-reset').onclick=resetToUS;
+document.getElementById('rc-reset').onclick=resetFilters;
+document.getElementById('detect-hotspots').onclick=runDetectHotspots;
+document.getElementById('apply-blend').onclick=()=>{
+  const btn=document.getElementById('apply-blend');
+  btn.disabled=true; btn.textContent='Resampling…';
+  setTimeout(()=>{doResample(currentBlend(), newSeed()); render();
+    btn.textContent='Resample'; btn.disabled=false;},10);
+};
+
+async function boot(){
+  const [pool,geo]=await Promise.all([
+    fetch('./pool.json').then(r=>r.json()),
+    fetch('./us_states.json').then(r=>r.json()),
+  ]);
+  POOL=pool; STATES_GEO=geo;
+  document.getElementById('st-seed').textContent=SEED;
+  buildBlendControls();
+  buildSeverityControls();
+  doResample('uniform');
+  render();
+  document.getElementById('splash').style.display='none';
+}
+boot().catch(err=>{
+  document.getElementById('splash').innerHTML=
+    `<div style="color:#e0533d">Load failed: ${err.message}</div>
+     <div style="color:#5a6b80;max-width:320px;text-align:center">
+     Serve this folder over http (e.g. <code>python -m http.server</code>) — file:// blocks fetch and module imports.</div>`;
+});
+</script>
+</body>
+</html>

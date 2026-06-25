@@ -1,0 +1,14 @@
+# Local source data — not needed for the site (pool.json is the baked output)
+data/
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+.conda/*
+.pytest_cache/
+compress.py
+venv/
+
+# OS
+.DS_Store
