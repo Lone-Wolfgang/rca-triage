@@ -21,7 +21,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
   font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif}
-#app{display:grid;grid-template-columns:360px 1fr 340px;grid-template-rows:auto 1fr;height:100vh}
+#app{display:grid;grid-template-columns:300px 1fr 300px;grid-template-rows:auto 1fr;height:100vh}
 header{grid-column:1/4;border-bottom:1px solid var(--line);background:var(--panel-2);
   padding:14px 22px;display:flex;align-items:baseline;gap:18px}
 header h1{font-size:calc(var(--base-size) * 1.364);font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin:0}
@@ -151,7 +151,7 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
   <aside class="left">
     <div class="sec" id="hotspots">
       <h2 class="hs-head">Hot Spots<a id="detect-hotspots" class="rc-reset">re-detect</a></h2>
-      <div class="hs-sub">Top impacted ~50-mile areas in the current view.</div>
+      <div class="hs-sub">Top impacted ~50-mile areas.</div>
       <div class="hs-list" id="hs-list"></div>
     </div>
     <div class="sec" id="impact">
@@ -172,10 +172,6 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
       <h2>Regional Severity</h2>
       <div class="ramp" id="ramp"></div>
       <div class="ramp-lbl"><span>fewer</span><span id="ramp-max">more</span></div>
-      <div class="note" style="padding:10px 0 0;background:none">
-        Color = <b>faulted-cell count</b> shown at current severity (placeholder).
-        Swaps to cost-weighted priority when scoring lands.
-      </div>
     </div>
     <div class="sec">
       <button class="btn" id="apply-blend">Resample</button>
@@ -544,7 +540,7 @@ function renderHotspots(list){
     return `<div class="hs-row" data-rank="${h.rank}">
       <span class="hs-rank">${h.rank}</span>
       <span><span class="hs-city">${place}</span>
-        <span class="hs-meta">${h.faults.toLocaleString()} faults · ~50 mi</span></span>
+        <span class="hs-meta">${h.faults.toLocaleString()} faults</span></span>
       <span class="hs-imp">${h.imp.toLocaleString()}</span>
     </div>`;
   }).join('');
