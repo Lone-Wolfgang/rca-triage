@@ -100,9 +100,9 @@ h2.rc-head{display:flex;align-items:center;justify-content:space-between}
 .hs-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
 h2.hs-head{display:flex;align-items:center;justify-content:space-between}
 .hs-sub{font-size:calc(var(--base-size) * 0.85);color:var(--ink-faint);line-height:1.5;margin-top:2px}
-#detect-hotspots{font-size:calc(var(--base-size) * 0.78);letter-spacing:.1em;color:var(--att);
+#pan-out{font-size:calc(var(--base-size) * 0.78);letter-spacing:.1em;color:var(--att);
   cursor:pointer;text-transform:uppercase;font-weight:600}
-#detect-hotspots:hover{color:var(--accent);text-decoration:underline}
+#pan-out:hover{color:var(--accent);text-decoration:underline}
 .hs-row{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;
   padding:7px 9px;border:1px solid var(--line);border-radius:4px;cursor:pointer;
   background:var(--panel-2);transition:.12s}
@@ -150,7 +150,7 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
   </header>
   <aside class="left">
     <div class="sec" id="hotspots">
-      <h2 class="hs-head">Hot Spots<a id="detect-hotspots" class="rc-reset">re-detect</a></h2>
+      <h2 class="hs-head">Hot Spots<a id="pan-out" class="rc-reset">pan out</a></h2>
       <div class="hs-sub">Top impacted ~50-mile areas.</div>
       <div class="hs-list" id="hs-list"></div>
     </div>
@@ -581,15 +581,9 @@ function focusHotspot(rank){
 }
 
 function runDetectHotspots(){
-  const link=document.getElementById('detect-hotspots');
-  const prev=link.textContent;
-  link.textContent='detecting…'; link.style.pointerEvents='none';
-  setTimeout(()=>{
-    const list=detectHotspots(5);
-    renderHotspots(list);
-    drawHotspotCircles(list);
-    link.textContent=prev; link.style.pointerEvents='';
-  },10);
+  const list=detectHotspots(5);
+  renderHotspots(list);
+  drawHotspotCircles(list);
 }
 
 // Clear detected hotspots when the underlying fault set changes (resample, filter,
@@ -603,7 +597,7 @@ function clearHotspots(){
 
 
 // ---- frame ----
-function frameForView(){
+function frameForView(animate=false){
   map.setMaxBounds(null);
   map.setMinZoom(0);
   let bounds=CONUS_BOUNDS;
@@ -612,7 +606,7 @@ function frameForView(){
     if(sf.length) bounds=L.geoJSON({type:'FeatureCollection',features:sf.map(x=>x.feat)}).getBounds().pad(0.05);
   }
   const floorZoom=map.getBoundsZoom(bounds);
-  map.fitBounds(bounds,{animate:false});
+  map.fitBounds(bounds,{animate});
   map.setMinZoom(floorZoom);
   map.setMaxBounds(bounds);
 }
@@ -733,7 +727,7 @@ document.getElementById('sev').oninput=(e)=>{
 };
 document.getElementById('btn-reset').onclick=resetToUS;
 document.getElementById('rc-reset').onclick=resetFilters;
-document.getElementById('detect-hotspots').onclick=runDetectHotspots;
+document.getElementById('pan-out').onclick=()=>frameForView(true);
 document.getElementById('apply-blend').onclick=()=>{
   const btn=document.getElementById('apply-blend');
   btn.disabled=true; btn.textContent='Resampling…';
