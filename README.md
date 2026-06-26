@@ -32,12 +32,6 @@ python -m http.server
 Then open `http://localhost:8000`. The app fetches `pool.json` and `us_states.json`,
 imports `resample.js`, and renders the dashboard.
 
-## Running the JS tests
-
-```
-node --test resample.test.mjs
-```
-
 ## Deploying to GitHub Pages
 
 The app is fully static, so GitHub Pages serves it with no build step or backend.
@@ -57,35 +51,52 @@ Notes:
 - Leaflet and the basemap tiles load from public CDNs, which work fine from any HTTPS
   origin including GitHub Pages.
 
-## Data pipeline (optional — not needed to run or deploy)
+## The dataset (`ETL/`)
 
-The browser only needs `pool.json`. These scripts regenerate it from source data and are
-**not** part of the runtime.
+The browser only needs `pool.json`. Everything that produces it lives in **`ETL/`** and
+is **not** part of the runtime — you don't need it to run or deploy the site.
 
-- **`preprocess_att_us.py`** — builds the labeled cell pool from OpenCellID (filters to
-  AT&T, dedups, assigns state + quadrant via point-in-polygon).
-- **`enrich_data.py`** — adds `estimated_population_served` (ACS block-group apportionment
-  via KD-tree) and `nearest_city` (nearest populated place, in-state preferred).
-- **`export_pool.py`** — bakes the enriched parquet into the columnar `pool.json` the
-  browser loads.
+The enriched dataset behind the dashboard is published on Hugging Face:
+**[`LoneWolfgang/att-tower-rca`](https://huggingface.co/datasets/LoneWolfgang/att-tower-rca)** —
+a national map of AT&T towers, each labeled with its state, nearest city, and an estimate
+of how many customers it serves. See `ETL/README.md` for the full data dictionary and a
+build quickstart, and `ETL/att_tower_rca_eda.ipynb` for an exploration of tower
+distribution, population served, and how customers are attributed to each tower.
+
+Pipeline:
+
+- **`ETL/build_att_dataset.py`** — builds the labeled, customer-weighted cell pool from
+  OpenCellID: filters to AT&T, dedups, assigns state + quadrant via point-in-polygon,
+  apportions ACS block-group population to nearest tower(s), and labels nearest cities.
+  Outputs `att_us_dataset.parquet` (the file published to Hugging Face).
+- **`export_pool.py`** (repo root) — bakes the enriched parquet into the columnar
+  `pool.json` the browser loads.
 
 ```
-python export_pool.py --cells /path/to/Locations.parquet --out pool.json
-python export_pool.py --cells /path/to/Locations.parquet --measure   # dry run, prints sizes
+python ETL/build_att_dataset.py --csv 310.csv.gz 311.csv.gz 312.csv.gz 313.csv.gz
+python export_pool.py --cells att_us_dataset.parquet --out pool.json
+python export_pool.py --cells att_us_dataset.parquet --measure   # dry run, prints sizes
 ```
 
-Requires `pandas>=2.2` and `pyarrow` (see `requirements.txt`); the enrichment step also
-uses `geopandas`, `scipy`, and either a cached city reference or network access.
+Requires the deps in `requirements.txt` (`pandas>=2.2`, `pyarrow`, `geopandas`, `scipy`,
+and others); the build step also needs either a cached city reference or network access.
 
 ## File layout
 
 ```
 index.html          — live app (UI, map, hot spot detection, all in one file)
 resample.js         — in-browser fault resampler (pure, no DOM)
-resample.test.mjs   — JS invariant tests (node --test)
 pool.json           — baked cell pool (184,920 cells + city + population)
 us_states.json      — states GeoJSON for the choropleth
 export_pool.py      — regenerates pool.json from the enriched parquet
-enrich_data.py      — adds population + nearest-city columns (pipeline)
 requirements.txt    — Python deps for the data pipeline
+.nojekyll           — tells GitHub Pages to skip Jekyll
+ETL/
+  build_att_dataset.py     — OpenCellID → labeled, customer-weighted parquet
+  att_tower_rca_eda.ipynb  — dataset exploration notebook
+  README.md                — dataset dictionary + build quickstart
 ```
+
+> Local-only (gitignored): `data/`, `hf_dataset/`, and `*.parquet` source/intermediate
+> files. The committed site needs only the runtime files above; the dataset itself lives
+> on Hugging Face.

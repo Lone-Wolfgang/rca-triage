@@ -1,2 +1,12 @@
 pandas>=2.2
 pyarrow
+geopandas
+requests
+numpy
+shapely
+scipy
+pyproj
+huggingface_hub
+datasets
+ipykernel
+matplotlib

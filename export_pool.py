@@ -29,6 +29,7 @@ import json
 import pathlib
 
 import pandas as pd
+from datasets import load_dataset
 
 # Fields the browser needs. NO feature columns — the live app carries only the
 # class label, which resample.js assigns; it does not come from the pool.
@@ -112,7 +113,7 @@ def build_columnar(df: pd.DataFrame, conus: bool = False) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Export columnar browser pool from cells parquet.")
-    ap.add_argument("--cells", default="data/Locations.parquet", help="att_us_labeled.parquet")
+    ap.add_argument("--cells", help="att_us_labeled.parquet")
     ap.add_argument("--out", default="pool.json", help="output JSON path")
     ap.add_argument("--gzip", action="store_true", help="also write <out>.gz")
     ap.add_argument("--conus", action="store_true",
@@ -121,14 +122,17 @@ def main() -> None:
                     help="print raw/gzip sizes and exit without writing")
     args = ap.parse_args()
 
-    df = pd.read_parquet(args.cells)
+    if args.cells:
+        df = pd.read_parquet(args.cells)
+    else:
+        df = load_dataset("LoneWolfgang/att-tower-rca", split="train").to_pandas()
     bundle = build_columnar(df, conus=args.conus)
     blob = json.dumps(bundle, separators=(",", ":")).encode("utf-8")
     gz = gzip.compress(blob, compresslevel=6)
 
     print(f"cells: {bundle['n']:,}")
     print(f"raw:   {len(blob) / 1e6:.2f} MB")
-    print(f"gzip:  {len(gz) / 1e6:.2f} MB  (what Netlify sends)")
+    print(f"gzip:  {len(gz) / 1e6:.2f} MB")
 
     if args.measure:
         print("(--measure: nothing written)")

@@ -1,14 +1,18 @@
 # Local source data — not needed for the site (pool.json is the baked output)
 data/
 *.parquet
+hf_dataset/
 
 # Python
 __pycache__/
 *.pyc
-.conda/*
+.conda/
 .pytest_cache/
 compress.py
 venv/
 
 # OS
 .DS_Store
+
+# Compressed archives
+*.zip
