@@ -180,17 +180,6 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
   border:1px solid var(--line);border-radius:3px;color:var(--pale-sky);
   font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.82);
   line-height:1.5;white-space:pre-wrap;word-break:break-word}
-#q-chart{margin-top:14px}
-#q-chart[hidden]{display:none}
-.qc-title{font-size:calc(var(--base-size) * 0.82);letter-spacing:.12em;text-transform:uppercase;
-  color:var(--ink-faint);font-weight:600;margin-bottom:7px;display:flex;justify-content:space-between}
-.qc-bar{display:flex;height:22px;border-radius:3px;overflow:hidden;border:1px solid var(--line);background:var(--panel-2)}
-.qc-seg{height:100%;min-width:2px;transition:opacity .12s}
-.qc-seg:hover{opacity:.8}
-.qc-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:9px}
-.qc-key{display:flex;align-items:center;gap:5px;font-size:calc(var(--base-size) * 0.85);color:var(--ink-dim)}
-.qc-key .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
-.qc-key .n{font-family:"IBM Plex Mono",monospace;color:var(--ink-faint)}
 #q-answer{margin-top:11px;font-size:calc(var(--base-size) * 0.95);color:var(--ink-dim);line-height:1.55}
 #q-answer[hidden]{display:none}
 /* ---- Hot Spot Action Plan ---- */
@@ -268,11 +257,6 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
       <div id="q-status" data-kind=""></div>
       <div id="q-answer" hidden></div>
       <details id="q-sql-wrap" hidden><summary>view query</summary><code id="q-sql"></code></details>
-      <div id="q-chart" hidden>
-        <div class="qc-title"><span>Root-cause blend</span><span id="qc-total"></span></div>
-        <div class="qc-bar" id="qc-bar"></div>
-        <div class="qc-legend" id="qc-legend"></div>
-      </div>
     </div>
   </aside>
   <div id="map"><button id="btn-reset">US</button></div>
@@ -714,14 +698,22 @@ map.on('mouseout',()=>{
 // Aggregate Impacted Customers over the faults currently shown (respects the
 // display filter, class toggles, and region drill via faultsInView). Tooltips
 // recompute from live severity[] on the next hover, so no pinning is needed.
+// The set the impact panels aggregate over: the query's matched towers when a
+// query is active (query mode spans the whole dataset), else the filtered view.
+function impactFaults(){
+  if(queryIds) return shownFaults().filter(f=>queryIds.has(f.cell_global_id));
+  return faultsInView();
+}
 function updateImpactTotal(){
-  const fs=faultsInView();
+  const fs=impactFaults();
   let total=0;
   for(const f of fs) total+=impactedCustomers(f);
   const el=document.getElementById('impact-total');
   if(el) el.textContent=total.toLocaleString();
   const sub=document.getElementById('impact-sub');
-  if(sub) sub.textContent=`across ${fs.length.toLocaleString()} fault${fs.length===1?'':'s'} shown`;
+  if(sub) sub.textContent=queryIds
+    ? `across ${fs.length.toLocaleString()} tower${fs.length===1?'':'s'} matched by query`
+    : `across ${fs.length.toLocaleString()} fault${fs.length===1?'':'s'} shown`;
 }
 
 // Ranked horizontal bars: total Impacted Customers per fault class over the
@@ -733,7 +725,7 @@ function fmtImp(v){
 function updateImpactByClass(){
   const el=document.getElementById('ic-bars');
   if(!el) return;
-  const fs=faultsInView();
+  const fs=impactFaults();
   const byClass={};
   for(const f of fs){ byClass[f.answer]=(byClass[f.answer]||0)+impactedCustomers(f); }
   const ranked=VALID_CLASSES.filter(k=>byClass[k]>0).sort((a,b)=>byClass[b]-byClass[a]);
@@ -1107,44 +1099,25 @@ function renderProse(text){
 }
 
 // ---- NL query integration ---------------------------------------------------
-function currentQueryFaults(){ return faultsInView(); }
+// The query DB is built from shownFaults() — the WHOLE displayed dataset,
+// deliberately ignoring the region drill, hotspot filter, and class toggles.
+// A query is its own filter mode: issuing one resets those filters (see
+// onQueryFlush), and changing any of them resets the query (syncQueryDb).
+function currentQueryFaults(){ return shownFaults(); }
 
-// Stacked bar: the fault-class blend of the matched set, legend colors.
-function renderQueryChart(rows){
-  const chart=document.getElementById('q-chart');
-  const bar=document.getElementById('qc-bar');
-  const leg=document.getElementById('qc-legend');
-  const tot=document.getElementById('qc-total');
-  if(!chart||!bar||!leg) return;
-  if(!rows||!rows.length){ chart.hidden=true; return; }
-  const counts={}; for(const r of rows){ const k=r.fault_class; counts[k]=(counts[k]||0)+1; }
-  const total=rows.length;
-  tot.textContent=`${total.toLocaleString()} tower${total===1?'':'s'}`;
-  bar.innerHTML=VALID_CLASSES.filter(k=>counts[k]).map(k=>{
-    const m=CLASSES[k]; const pct=(counts[k]/total*100);
-    return `<div class="qc-seg" style="width:${pct}%;background:${m.c}"
-      title="${k} · ${m.n}: ${counts[k].toLocaleString()} (${pct.toFixed(0)}%)"></div>`;
-  }).join('');
-  leg.innerHTML=VALID_CLASSES.filter(k=>counts[k]).map(k=>{
-    const m=CLASSES[k];
-    return `<span class="qc-key"><span class="dot" style="background:${m.c}"></span>${k}
-      <span class="n">${counts[k].toLocaleString()}</span></span>`;
-  }).join('');
-  chart.hidden=false;
-}
-
-// A query result: dim non-matches, fit bounds to the matched set, draw the bar.
+// A query result: dim non-matches, fit the view to the matched towers, and
+// point the impact panels (total + hbars) at the matched set.
 function onQueryResult({rows, ids, answer}){
   queryIds = ids && ids.size ? ids : null;
   document.getElementById('q-clear').hidden = !queryIds;
   drawPoints();
-  renderQueryChart(rows);
+  updateImpactTotal(); updateImpactByClass();
   const ans=document.getElementById('q-answer');
   if(ans){ ans.textContent=answer||''; ans.hidden=!answer; }
   if(rows && rows.length){
     const pts=rows.map(r=>[r.latitude,r.longitude]);
     const b=L.latLngBounds(pts).pad(0.15);
-    map.fitBounds(b,{animate:true});   // clamped by the current view's maxBounds
+    map.fitBounds(b,{animate:true});   // nav was reset to US at flush, so no clamp fights this
     drawQueryRing(rows);
   } else {
     clearQueryRing();
@@ -1153,32 +1126,39 @@ function onQueryResult({rows, ids, answer}){
 function onQueryClear(){
   queryIds=null;
   document.getElementById('q-clear').hidden=true;
-  document.getElementById('q-chart').hidden=true;
   const ans=document.getElementById('q-answer'); if(ans) ans.hidden=true;
   clearQueryRing();
   drawPoints();
+  updateImpactTotal(); updateImpactByClass();
   frameForView(true);
 }
-// Flush before a NEW query runs: like clear, but no re-frame (the incoming
-// query sets its own bounds). Every query starts residue-free.
+// Flush before a NEW query runs. A query spans the whole dataset, so entering
+// query mode RESETS the region/hotspot drill and class toggles (they and the
+// query are mutually exclusive filter modes). render() rebuilds everything;
+// the incoming result then fits its own bounds.
 function onQueryFlush(){
   queryIds=null;
   clearQueryRing();
-  const ch=document.getElementById('q-chart'); if(ch) ch.hidden=true;
   const ans=document.getElementById('q-answer'); if(ans) ans.hidden=true;
-  drawPoints();
+  hiddenClasses.clear();
+  nav={level:'us'};
+  render();
 }
 
-// Fault set changed (resample, filter, drill, severity, dial): rebuild the
-// query DB and clear any stale highlight — matched ids may no longer exist.
+// Fault set or filters changed (resample, class toggle, drill, hotspot click,
+// severity, dial): rebuild the query DB and RESET any active query — the two
+// filter modes are mutually exclusive. Refresh the panels the query was
+// steering so they snap back to the view-filtered set.
 function syncQueryDb(){
   refreshQueryDb();
   if(queryIds){
     queryIds=null;
     const clr=document.getElementById('q-clear'); if(clr) clr.hidden=true;
-    const ch=document.getElementById('q-chart'); if(ch) ch.hidden=true;
     const ans=document.getElementById('q-answer'); if(ans) ans.hidden=true;
+    const st=document.getElementById('q-status'); if(st){ st.textContent=''; st.dataset.kind=''; }
     clearQueryRing();
+    drawPoints();
+    updateImpactTotal(); updateImpactByClass();
   }
 }
 
