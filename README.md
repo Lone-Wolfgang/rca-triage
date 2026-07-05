@@ -14,7 +14,7 @@ optional model classifier connects to a LiteLLM gateway if one is configured.
 ```
 # 1. From the repo root — optional model connection (see "Model classifier" below).
 #    Skip these two lines to run the map without the classifier.
-cp env.example .env && $EDITOR .env          # fill in LITELLM_MODEL / _BASE_URL / _KEY
+cp env.example .env && nano .env          # fill in LITELLM_MODEL / _BASE_URL / _KEY
 export $(grep -v '^#' .env | xargs) && python gen-config.py
 
 # 2. Serve the folder over HTTP (file:// blocks fetch + ES modules) and open it.
