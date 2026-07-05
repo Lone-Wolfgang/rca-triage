@@ -32,7 +32,7 @@ header .spacer{flex:1}
 header .stat{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:calc(var(--base-size) * 1.0);color:var(--ink-dim)}
 header .stat b{color:var(--ink);font-weight:600}
 #map{grid-column:2;grid-row:2;background:var(--bg);position:relative}
-#btn-reset{position:absolute;bottom:24px;left:12px;z-index:500;display:none;
+#btn-reset{position:absolute;bottom:24px;right:12px;z-index:500;display:none;
   background:var(--panel);border:1px solid var(--att);color:var(--ink);
   padding:11px 20px;border-radius:4px;cursor:pointer;font-size:calc(var(--base-size) * 1.818);
   font-family:"IBM Plex Mono",monospace;letter-spacing:.06em;transition:.15s}
@@ -97,6 +97,14 @@ h2.rc-head{display:flex;align-items:center;justify-content:space-between}
 .impact-big{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 2.545);font-weight:600;
   color:var(--accent);line-height:1.1;letter-spacing:-.01em}
 .impact-sub{font-size:calc(var(--base-size) * 0.955);color:var(--ink-faint);margin-top:3px;letter-spacing:.04em}
+/* ranked horizontal bars — impacted customers per class */
+.ic-bar-wrap{margin-top:12px;display:flex;flex-direction:column;gap:5px}
+.ic-bar-row{display:grid;grid-template-columns:26px 1fr auto;gap:8px;align-items:center;font-size:calc(var(--base-size) * 0.85)}
+.ic-bar-row .ib-k{font-family:"IBM Plex Mono",monospace;color:var(--ink-dim)}
+.ic-bar-track{background:var(--panel-2);border:1px solid var(--line);border-radius:3px;height:14px;overflow:hidden}
+.ic-bar-fill{height:100%;border-radius:2px 0 0 2px;transition:width .3s}
+.ic-bar-row .ib-v{font-family:"IBM Plex Mono",monospace;color:var(--ink);text-align:right;font-size:calc(var(--base-size) * 0.82);min-width:3.2em}
+.ic-empty{font-size:calc(var(--base-size) * 0.9);color:var(--ink-faint);line-height:1.5;margin-top:10px}
 .hs-list{margin-top:12px;display:flex;flex-direction:column;gap:6px}
 h2.hs-head{display:flex;align-items:center;justify-content:space-between}
 .hs-sub{font-size:calc(var(--base-size) * 0.85);color:var(--ink-faint);line-height:1.5;margin-top:2px}
@@ -107,6 +115,7 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
   padding:7px 9px;border:1px solid var(--line);border-radius:4px;cursor:pointer;
   background:var(--panel-2);transition:.12s}
 .hs-row:hover{border-color:var(--att);background:var(--panel)}
+.hs-row.active{border-color:#FF6B35;background:var(--panel);box-shadow:inset 2px 0 0 #FF6B35}
 .hs-rank{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 1.05);
   font-weight:600;color:var(--accent);min-width:1.4em;text-align:center}
 .hs-city{font-weight:600;color:var(--ink);font-size:calc(var(--base-size) * 1.0);line-height:1.2}
@@ -149,7 +158,7 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
 </style>
 </head>
 <body>
-<div id="splash"><div>LOADING CELL POOL…</div><div class="bar"><i></i></div></div>
+<div id="splash"><div>LOADING CELL POOL…</div><div class="bar"><i></i></div><div id="boot-stage" style="font-size:.8em;color:#5a6b80">starting…</div></div>
 <div id="app">
   <header>
     <h1>RCA<b>·</b>TRIAGE</h1>
@@ -161,15 +170,19 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
     <span class="stat">SEED <b id="st-seed">0</b></span>
   </header>
   <aside class="left">
-    <div class="sec" id="hotspots">
-      <h2 class="hs-head">Hot Spots<a id="pan-out" class="rc-reset">pan out</a></h2>
-      <div class="hs-sub">Top impacted ~50-mile areas.</div>
-      <div class="hs-list" id="hs-list"></div>
-    </div>
     <div class="sec" id="impact">
       <h2>Impacted Customers</h2>
       <div class="impact-big" id="impact-total">—</div>
       <div class="impact-sub" id="impact-sub">across faults shown</div>
+    </div>
+    <div class="sec" id="impact-by-class">
+      <h2>Impacted by Class</h2>
+      <div class="ic-bar-wrap" id="ic-bars"></div>
+    </div>
+    <div class="sec" id="hotspots">
+      <h2 class="hs-head">Hot Spots<a id="pan-out" class="rc-reset">pan out</a></h2>
+      <div class="hs-sub">Top impacted ~50-mile areas. Click to filter to one.</div>
+      <div class="hs-list" id="hs-list"></div>
     </div>
     <!-- Model-dependent UI. Hidden until the boot-time connection probe
          succeeds; if there's no reachable model it never renders. -->
@@ -180,7 +193,7 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
       <div id="model-out" class="model-out" hidden></div>
     </div>
   </aside>
-  <div id="map"><button id="btn-reset">← US</button></div>
+  <div id="map"><button id="btn-reset">US</button></div>
   <aside class="right">
     <div class="sec">
       <h2>Display Filter · saturation</h2>
@@ -242,6 +255,21 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
 </script>
 <script type="module">
 import { resample, VALID_CLASSES } from "./resample.js";
+
+// Surface ANY uncaught error (including a top-level throw during module
+// evaluation, before boot() runs) onto the splash — otherwise a silent throw
+// leaves the loading spinner up forever with no clue why.
+window.addEventListener('error',(e)=>{
+  const s=document.getElementById('splash');
+  if(s && s.style.display!=='none'){
+    s.innerHTML=`<div style="color:#e0533d;font-weight:600">Startup error</div>
+      <div style="color:#5a6b80;max-width:380px;text-align:center;line-height:1.5;font-size:.85em">
+      ${(e.message||e.error||'unknown').toString()}<br><br>Open DevTools → Console for details.</div>`;
+  }
+});
+window.addEventListener('unhandledrejection',(e)=>{
+  console.error('[unhandledrejection]',e.reason);
+});
 
 // ---- config (with per-class fallback to the scalar defaults) ---------------
 const CFG = window.RCA_CONFIG;
@@ -326,7 +354,7 @@ function hotspotGridDeg(){
 }
 
 function detectHotspots(topN=5){
-  const fs=faultsInView();
+  const fs=faultsForDetection();
   if(!fs.length) return [];
   const dLat=hotspotGridDeg();
   // Use a reference latitude (mean) for longitude scaling so columns line up.
@@ -348,7 +376,9 @@ function detectHotspots(topN=5){
     const city=f.nearest_city||'';
     if(city){
       // impacted-weighted vote (with a small +1 so zero-impact faults still count)
-      cell.cityImp.set(city,(cell.cityImp.get(city)||0)+imp+1);
+      // keyed by city|state so same-named cities in different states stay distinct
+      const ck=city+'|'+(f.state||'');
+      cell.cityImp.set(ck,(cell.cityImp.get(ck)||0)+imp+1);
     }
   }
 
@@ -364,12 +394,14 @@ function detectHotspots(topN=5){
       for(const [city,w] of nb.cityImp) votes.set(city,(votes.get(city)||0)+w);
     }
     // winning city = max impacted-weighted vote
-    let topCity='', topW=-1;
-    for(const [city,w] of votes){ if(w>topW){ topW=w; topCity=city; } }
+    let topKey='', topW=-1;
+    for(const [ck,w] of votes){ if(w>topW){ topW=w; topKey=ck; } }
+    const bar=topKey.lastIndexOf('|');
     scored.push({
       imp, faults:n,
       lat:latW/Math.max(1,n), lon:lonW/Math.max(1,n),
-      city:topCity,
+      city:bar>=0?topKey.slice(0,bar):topKey,
+      st:bar>=0?topKey.slice(bar+1):'',
     });
   }
 
@@ -383,16 +415,22 @@ function detectHotspots(topN=5){
   const minSepDeg=dLat*1.5;   // ~75 miles apart
   for(const s of scored){
     if(taken.length>=topN) break;
-    if(s.city && takenCities.has(s.city)) continue;   // same metro name already shown
+    const ck=s.city?s.city+'|'+s.st:'';
+    if(ck && takenCities.has(ck)) continue;   // same metro name already shown
     const clash=taken.some(t=>{
       const dla=(t.lat-s.lat), dlo=(t.lon-s.lon)/Math.max(0.2,Math.cos(refLat*Math.PI/180));
       return Math.hypot(dla,dlo)<minSepDeg;
     });
     if(clash) continue;
     taken.push(s);
-    if(s.city) takenCities.add(s.city);
+    if(ck) takenCities.add(ck);
   }
   return taken.map((s,i)=>({rank:i+1, ...s}));
+}
+
+// display name for a hotspot: "City, ST" (coords fallback)
+function hotspotLabel(h){
+  return h.city ? `${h.city}${h.st?', '+h.st:''}` : `${h.lat.toFixed(2)}, ${h.lon.toFixed(2)}`;
 }
 
 // ---- map: zoom/pan enabled, but clamped to the current drill context ----
@@ -432,19 +470,37 @@ const hiddenClasses=new Set();   // classes toggled OFF; empty => all shown
 const classVisible=(k)=>!hiddenClasses.has(k);
 
 // which faults belong to the current view (respects class filter)
-function faultsInView(){
+// nav levels: {level:'us'} | {level:'region',region} | {level:'hotspot',hs,prev}
+// A hotspot is a geographic filter: faults within HOTSPOT_MILES of its centroid
+// (exactly the circle drawn on the map), applied over the view it was detected
+// in (nav.prev = US or a quadrant).
+function withinHotspot(f,hs){
+  const dLat=(f.latitude-hs.lat)*MILES_PER_DEG_LAT;
+  const dLon=(f.longitude-hs.lon)*MILES_PER_DEG_LAT*Math.cos(hs.lat*Math.PI/180);
+  return dLat*dLat+dLon*dLon<=HOTSPOT_MILES*HOTSPOT_MILES;
+}
+function baseNav(){ return nav.level==='hotspot'?nav.prev:nav; }
+// the view WITHOUT the hotspot filter (what hotspot detection runs over)
+function faultsForDetection(){
   const s=shownFaults().filter(f=>classVisible(f.answer));
-  if(nav.level==='region') return s.filter(f=>f.quadrant===nav.region);
+  const b=baseNav();
+  if(b.level==='region') return s.filter(f=>f.quadrant===b.region);
   return s;
 }
+function faultsInView(){
+  const base=faultsForDetection();
+  if(nav.level==='hotspot') return base.filter(f=>withinHotspot(f,nav.hs));
+  return base;
+}
 
-// state geojson features for the current view
+// state geojson features for the current view (hotspot mode shows its base view)
 function viewStateFeatures(){
+  const b=baseNav();
   return STATES_GEO.features.map(f=>{
     const code=NAME2CODE[f.properties.name];
     if(!code||NON_CONUS.has(code))return null;
     const q=STATE_TO_QUADRANT[code]||'';
-    if(nav.level==='region'&&q!==nav.region)return null;
+    if(b.level==='region'&&q!==b.region)return null;
     return {feat:f,code,quad:q,name:f.properties.name};
   }).filter(Boolean);
 }
@@ -561,6 +617,31 @@ function updateImpactTotal(){
   if(sub) sub.textContent=`across ${fs.length.toLocaleString()} fault${fs.length===1?'':'s'} shown`;
 }
 
+// Ranked horizontal bars: total Impacted Customers per fault class over the
+// faults currently in view. Ordered by impact (desc), normalized to the top
+// class so the worst class always fills its track.
+function fmtImp(v){
+  return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(1)+'K':v.toLocaleString();
+}
+function updateImpactByClass(){
+  const el=document.getElementById('ic-bars');
+  if(!el) return;
+  const fs=faultsInView();
+  const byClass={};
+  for(const f of fs){ byClass[f.answer]=(byClass[f.answer]||0)+impactedCustomers(f); }
+  const ranked=VALID_CLASSES.filter(k=>byClass[k]>0).sort((a,b)=>byClass[b]-byClass[a]);
+  if(!ranked.length){ el.innerHTML=`<div class="ic-empty">No faults in view. Resample or widen filters.</div>`; return; }
+  const max=Math.max(...ranked.map(k=>byClass[k]));
+  el.innerHTML=ranked.map(k=>{
+    const m=CLASSES[k]; const w=(byClass[k]/max*100);
+    return `<div class="ic-bar-row" title="${k} · ${m.n}: ${byClass[k].toLocaleString()} impacted">
+      <span class="ib-k">${k}</span>
+      <div class="ic-bar-track"><div class="ic-bar-fill" style="width:${w}%;background:${m.c}"></div></div>
+      <span class="ib-v">${fmtImp(byClass[k])}</span>
+    </div>`;
+  }).join('');
+}
+
 // ---- Hot Spots UI ----------------------------------------------------------
 let hsLayer=null;        // highlight circles for detected hotspots
 let lastHotspots=[];
@@ -573,9 +654,11 @@ function renderHotspots(list){
     el.innerHTML=`<div class="hs-empty">No faults in the current view. Resample or widen the filters to populate hot spots.</div>`;
     return;
   }
+  const activeKey=nav.level==='hotspot'?`${nav.hs.city||''}|${nav.hs.st||''}|${nav.hs.lat.toFixed(2)}`:null;
   el.innerHTML=list.map(h=>{
-    const place=h.city ? h.city : `${h.lat.toFixed(2)}, ${h.lon.toFixed(2)}`;
-    return `<div class="hs-row" data-rank="${h.rank}">
+    const place=hotspotLabel(h);
+    const key=`${h.city||''}|${h.st||''}|${h.lat.toFixed(2)}`;
+    return `<div class="hs-row${key===activeKey?' active':''}" data-rank="${h.rank}">
       <span class="hs-rank">${h.rank}</span>
       <span><span class="hs-city">${place}</span>
         <span class="hs-meta">${h.faults.toLocaleString()} faults</span></span>
@@ -611,11 +694,13 @@ function drawHotspotCircles(list){
   hsLayer=L.layerGroup(layers).addTo(map);
 }
 
+// Clicking a hotspot makes it the active filter: the view window clamps to the
+// hotspot circle, and every downstream consumer (choropleth, points, legend,
+// impact total, hbars, model panel) follows via faultsInView().
 function focusHotspot(rank){
   const h=lastHotspots.find(x=>x.rank===rank);
   if(!h) return;
-  const radiusM=HOTSPOT_MILES*1609.34;
-  map.fitBounds(L.latLng(h.lat,h.lon).toBounds(radiusM*2.2),{animate:true});
+  drillTo({level:'hotspot', hs:{lat:h.lat,lon:h.lon,city:h.city,st:h.st,rank:h.rank}, prev:baseNav()});
 }
 
 function runDetectHotspots(){
@@ -639,7 +724,10 @@ function frameForView(animate=false){
   map.setMaxBounds(null);
   map.setMinZoom(0);
   let bounds=CONUS_BOUNDS;
-  if(nav.level==='region'){
+  if(nav.level==='hotspot'){
+    const radiusM=HOTSPOT_MILES*1609.34;
+    bounds=L.latLng(nav.hs.lat,nav.hs.lon).toBounds(radiusM*2.2);
+  } else if(nav.level==='region'){
     const sf=viewStateFeatures();
     if(sf.length) bounds=L.geoJSON({type:'FeatureCollection',features:sf.map(x=>x.feat)}).getBounds().pad(0.05);
   }
@@ -649,11 +737,20 @@ function frameForView(animate=false){
   map.setMaxBounds(bounds);
 }
 function updateCrumb(){
-  document.getElementById('st-view').textContent=nav.level==='us'?'US':nav.region;
+  const label=nav.level==='us'?'US'
+    :nav.level==='region'?nav.region
+    :(nav.hs.city?hotspotLabel(nav.hs):'HOT SPOT');
+  document.getElementById('st-view').textContent=label;
   document.getElementById('btn-reset').style.display=nav.level==='us'?'none':'block';
 }
 function drillTo(next){ nav=next; render(); }
 function resetToUS(){ nav={level:'us'}; render(); }
+// Pan Out: from a hotspot, return to the view it was opened from (US or a
+// quadrant). Otherwise just re-frame the current view.
+function panOut(){
+  if(nav.level==='hotspot'){ drillTo(nav.prev); return; }
+  frameForView(true);
+}
 function showRCA(f){
   const meta=CLASSES[f.answer]||{c:'#888',n:f.answer,d:''};
   document.getElementById('rca').innerHTML=`
@@ -701,7 +798,7 @@ function buildLegend(){
 }
 
 // re-render the layers + legend that depend on the class filter
-function applyClassFilter(){ drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); runDetectHotspots(); }
+function applyClassFilter(){ drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots(); }
 
 function resetFilters(){ hiddenClasses.clear(); applyClassFilter(); }
 document.getElementById('ramp').innerHTML=Array.from({length:14},(_,i)=>
@@ -736,7 +833,7 @@ function buildSeverityControls(){
       const k=inp.dataset.k;
       severity[k]=+inp.value;
       document.getElementById('sv-'+k).textContent=inp.value;
-      updateImpactTotal();   // live aggregate; tooltips recompute on next hover
+      updateImpactTotal(); updateImpactByClass();   // live aggregate; tooltips recompute on next hover
       clearHotspots();       // severity changing → prior hotspot impact is stale
     };
     inp.onchange=()=>{ runDetectHotspots(); };   // re-detect once the drag settles
@@ -753,7 +850,7 @@ function doResample(blend, seed=SEED){
 }
 
 // ---- render: everything that depends on nav + dial + resample ----
-function render(){ frameForView(); drawChoro(); drawPoints(); buildLegend(); updateCrumb(); updateImpactTotal(); runDetectHotspots(); }
+function render(){ frameForView(); drawChoro(); drawPoints(); buildLegend(); updateCrumb(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots(); }
 
 // ---- wire knobs ----
 function pct(x){return (x*100).toFixed(1)+'%';}
@@ -761,15 +858,17 @@ document.getElementById('sev').oninput=(e)=>{
   sevIdx=+e.target.value-1; const v=dialStops[sevIdx];
   document.getElementById('sev-lbl').textContent=pct(v);
   document.getElementById('st-sev').textContent=pct(v);
-  drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); runDetectHotspots();   // display-only
+  drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots();   // display-only
 };
 document.getElementById('btn-reset').onclick=resetToUS;
 document.getElementById('rc-reset').onclick=resetFilters;
-document.getElementById('pan-out').onclick=()=>frameForView(true);
+document.getElementById('pan-out').onclick=panOut;
 document.getElementById('apply-blend').onclick=()=>{
   const btn=document.getElementById('apply-blend');
   btn.disabled=true; btn.textContent='Resampling…';
-  setTimeout(()=>{doResample(currentBlend(), newSeed()); render();
+  setTimeout(()=>{
+    if(nav.level==='hotspot') nav=nav.prev;   // new population → old hotspot is stale
+    doResample(currentBlend(), newSeed()); render();
     btn.textContent='Resample'; btn.disabled=false;},10);
 };
 
@@ -865,25 +964,33 @@ function enableModelUI(){
 }
 
 async function boot(){
+  const stage=(msg)=>{ const d=document.getElementById('boot-stage'); if(d) d.textContent=msg; };
+  stage('fetching data…');
   const [pool,geo]=await Promise.all([
-    fetch('./pool.json').then(r=>r.json()),
-    fetch('./us_states.json').then(r=>r.json()),
+    fetch('./pool.json').then(r=>{ if(!r.ok) throw new Error('pool.json '+r.status); return r.json(); }),
+    fetch('./us_states.json').then(r=>{ if(!r.ok) throw new Error('us_states.json '+r.status); return r.json(); }),
   ]);
+  stage('building UI…');
   POOL=pool; STATES_GEO=geo;
   document.getElementById('st-seed').textContent=SEED;
   buildBlendControls();
   buildSeverityControls();
+  stage('resampling…');
   doResample('uniform');
+  stage('rendering…');
   render();
   document.getElementById('splash').style.display='none';
   // Probe the model last, so a slow/failing gateway never blocks the map.
   probeModel().then(ok=>{ if(ok) enableModelUI(); });
 }
 boot().catch(err=>{
+  console.error('[boot] failed:',err);
   document.getElementById('splash').innerHTML=
-    `<div style="color:#e0533d">Load failed: ${err.message}</div>
-     <div style="color:#5a6b80;max-width:320px;text-align:center">
-     Serve this folder over http (e.g. <code>python -m http.server</code>) — file:// blocks fetch and module imports.</div>`;
+    `<div style="color:#e0533d;font-weight:600">Load failed: ${err.message}</div>
+     <div style="color:#5a6b80;max-width:360px;text-align:center;line-height:1.5">
+     Open DevTools → Console for the full error. If this says a file 404'd, make sure
+     <code>index.html</code>, <code>resample.js</code>, <code>pool.json</code>, and
+     <code>us_states.json</code> are all in the folder you're serving.</div>`;
 });
 </script>
 </body>
