@@ -110,13 +110,9 @@ async function runQuestion(question) {
 
   let sql;
   try {
-    const r = await fetch(cfg.endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || `Translator error (${r.status}).`);
+    // cfg.translate(question) -> {sql, answer}; provided by the app (LiteLLM
+    // gateway via chatCompletion — no serverless endpoint in the local build).
+    const data = await cfg.translate(question);
     sql = (data.sql || "").trim();
     cfg._lastAnswer = (data.answer || "").trim();
   } catch (e) {
@@ -187,10 +183,7 @@ function hideSqlReveal() {
 }
 
 export async function initQuery(options) {
-  cfg = Object.assign(
-    { endpoint: "/.netlify/functions/nl2sql" },
-    options
-  );
+  cfg = Object.assign({}, options);
 
   const form = document.getElementById("q-form");
   const input = document.getElementById("q-input");

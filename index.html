@@ -142,18 +142,83 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
 #splash .bar i{display:block;height:100%;width:40%;background:var(--att);
   animation:slide 1s infinite ease-in-out}
 @keyframes slide{0%{margin-left:-40%}100%{margin-left:100%}}
-/* model classifier panel (only shown when a model connection probes OK) */
+/* connected-model badge (query panel header) */
 .model-badge{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.72);
   letter-spacing:.06em;color:var(--ok);text-transform:none;font-weight:600;
-  display:inline-flex;align-items:center;gap:5px}
+  display:inline-flex;align-items:center;gap:5px;margin-left:8px}
 .model-badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--ok);
   box-shadow:0 0 6px var(--ok)}
-.model-sub{font-size:calc(var(--base-size) * 0.85);color:var(--ink-faint);line-height:1.5;margin-bottom:10px}
-.model-out{margin-top:11px;font-size:calc(var(--base-size) * 0.92);color:var(--ink-dim);line-height:1.55;
-  background:var(--panel-2);border:1px solid var(--line);border-radius:4px;padding:10px 12px;white-space:pre-wrap;word-break:break-word}
-.model-out[data-loading="1"]{color:var(--att);font-family:"IBM Plex Mono",monospace}
-.model-out .class-chip{display:inline-flex;align-items:center;font-weight:700;padding:1px 6px;border-radius:3px;margin:0 2px}
-.model-out b{color:var(--ink)}
+/* ---- Ask the Map (NL query) ---- */
+.q-sub{font-size:calc(var(--base-size) * 0.85);color:var(--ink-faint);line-height:1.5;margin-bottom:10px}
+.q-form{display:flex;gap:6px;align-items:stretch}
+.q-form input{flex:1;background:var(--panel-2);border:1px solid var(--line);color:var(--ink);
+  border-radius:3px;padding:8px 10px;font-size:calc(var(--base-size) * 1.0);
+  font-family:inherit;outline:none;transition:border-color .12s;min-width:0}
+.q-form input:focus{border-color:var(--att)}
+.q-form input::placeholder{color:var(--ink-faint)}
+.q-go{background:var(--att);color:#fff;border:none;border-radius:3px;cursor:pointer;
+  padding:0 12px;font-size:calc(var(--base-size) * 0.9);font-weight:600;letter-spacing:.06em;
+  font-family:"IBM Plex Mono",monospace;text-transform:uppercase;transition:.15s}
+.q-go:hover{background:var(--att-navy)}
+.q-ex{font-size:calc(var(--base-size) * 0.82);color:var(--ink-faint);line-height:1.5;margin-top:8px;font-style:italic}
+#q-status{font-size:calc(var(--base-size) * 0.9);margin-top:10px;min-height:1.2em;
+  font-family:"IBM Plex Mono",monospace}
+#q-status[data-kind=loading]{color:var(--att)}
+#q-status[data-kind=ok]{color:var(--ink-dim)}
+#q-status[data-kind=empty]{color:var(--ink-faint)}
+#q-status[data-kind=error]{color:#e0533d}
+.q-clearbtn{font-size:calc(var(--base-size) * 0.8);letter-spacing:.1em;color:var(--att);
+  cursor:pointer;text-transform:uppercase;font-weight:600}
+.q-clearbtn:hover{color:var(--accent);text-decoration:underline}
+#q-sql-wrap{margin-top:10px}
+#q-sql-wrap summary{list-style:none;cursor:pointer;font-size:calc(var(--base-size) * 0.8);
+  letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600;outline:none}
+#q-sql-wrap summary::-webkit-details-marker{display:none}
+#q-sql-wrap summary::before{content:"▸";margin-right:6px;transition:transform .15s;display:inline-block}
+#q-sql-wrap[open] summary::before{transform:rotate(90deg)}
+#q-sql{display:block;margin-top:8px;padding:9px 10px;background:var(--panel-2);
+  border:1px solid var(--line);border-radius:3px;color:var(--pale-sky);
+  font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.82);
+  line-height:1.5;white-space:pre-wrap;word-break:break-word}
+#q-chart{margin-top:14px}
+#q-chart[hidden]{display:none}
+.qc-title{font-size:calc(var(--base-size) * 0.82);letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-faint);font-weight:600;margin-bottom:7px;display:flex;justify-content:space-between}
+.qc-bar{display:flex;height:22px;border-radius:3px;overflow:hidden;border:1px solid var(--line);background:var(--panel-2)}
+.qc-seg{height:100%;min-width:2px;transition:opacity .12s}
+.qc-seg:hover{opacity:.8}
+.qc-legend{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:9px}
+.qc-key{display:flex;align-items:center;gap:5px;font-size:calc(var(--base-size) * 0.85);color:var(--ink-dim)}
+.qc-key .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.qc-key .n{font-family:"IBM Plex Mono",monospace;color:var(--ink-faint)}
+#q-answer{margin-top:11px;font-size:calc(var(--base-size) * 0.95);color:var(--ink-dim);line-height:1.55}
+#q-answer[hidden]{display:none}
+/* ---- Hot Spot Action Plan ---- */
+#plan-sec[hidden]{display:none}
+.qp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+#qp-title{font-size:calc(var(--base-size) * 1.0);font-weight:600;color:var(--ink);letter-spacing:.02em}
+.qp-phases{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.qp-phase{border:1px solid var(--line);border-radius:4px;padding:9px 11px;background:var(--panel-2)}
+.qp-phase.p1{border-left:3px solid var(--c1)}
+.qp-phase.p2{border-left:3px solid var(--att)}
+.qp-phase.p3{border-left:3px solid var(--c8)}
+.qp-prow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.qp-pname{font-size:calc(var(--base-size) * 0.92);font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px}
+.qp-disp{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.78);
+  letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:3px}
+.qp-disp.field{background:rgba(255,107,53,.16);color:var(--c1)}
+.qp-disp.remote{background:rgba(0,159,219,.15);color:var(--att)}
+.qp-pmeta{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.82);
+  color:var(--ink-faint);margin-top:5px}
+.qp-pmeta b{color:var(--att);font-weight:600}
+.qp-recal{display:inline-block;margin-top:5px;font-size:calc(var(--base-size) * 0.78);
+  color:var(--accent);letter-spacing:.03em}
+.qp-dispatch-roll{font-family:"IBM Plex Mono",monospace;font-size:calc(var(--base-size) * 0.85);
+  color:var(--ink-dim);margin-bottom:10px;padding:7px 9px;border:1px dashed var(--line);border-radius:4px}
+.qp-dispatch-roll b{color:var(--c1)}
+.qp-prose{font-size:calc(var(--base-size) * 0.92);color:var(--ink-dim);line-height:1.6;white-space:pre-wrap}
+.qp-prose[data-loading="1"]{color:var(--att);font-family:"IBM Plex Mono",monospace}
+.qp-prose b{color:var(--ink)}
 @media(max-width:980px){#app{grid-template-columns:1fr}aside{display:none}#map{grid-column:1}}
 </style>
 </head>
@@ -184,13 +249,30 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
       <div class="hs-sub">Top impacted ~50-mile areas. Click to filter to one.</div>
       <div class="hs-list" id="hs-list"></div>
     </div>
-    <!-- Model-dependent UI. Hidden until the boot-time connection probe
-         succeeds; if there's no reachable model it never renders. -->
-    <div class="sec" id="model-panel" hidden>
-      <h2 class="rc-head">RCA Classifier<span id="model-badge" class="model-badge"></span></h2>
-      <div class="model-sub" id="model-sub">Hover a fault, then classify it with the connected model.</div>
-      <button class="btn" id="btn-classify" disabled>Classify hovered fault</button>
-      <div id="model-out" class="model-out" hidden></div>
+    <!-- Hot Spot Action Plan — deterministic skeleton (code owns the numbers);
+         shown while a hotspot filter is active. Model prose added if connected. -->
+    <div class="sec" id="plan-sec" hidden>
+      <div class="qp-head"><span id="qp-title">Action Plan</span></div>
+      <div class="qp-phases" id="qp-phases"></div>
+      <div class="qp-prose" id="qp-prose"></div>
+    </div>
+    <!-- Ask the Map (NL → SQL). Hidden until the boot-time model probe succeeds. -->
+    <div class="sec" id="query" hidden>
+      <h2 class="rc-head">Ask the Map<span id="model-badge" class="model-badge"></span><a id="q-clear" class="q-clearbtn" hidden>clear</a></h2>
+      <div class="q-sub">Filter the live faults in plain English.</div>
+      <form class="q-form" id="q-form" autocomplete="off">
+        <input id="q-input" type="text" placeholder="issues near Dallas…" aria-label="Ask about tower faults"/>
+        <button class="q-go" type="submit">Run</button>
+      </form>
+      <div class="q-ex">e.g. “PCI collisions in Texas”, “worst 20 by impact”</div>
+      <div id="q-status" data-kind=""></div>
+      <div id="q-answer" hidden></div>
+      <details id="q-sql-wrap" hidden><summary>view query</summary><code id="q-sql"></code></details>
+      <div id="q-chart" hidden>
+        <div class="qc-title"><span>Root-cause blend</span><span id="qc-total"></span></div>
+        <div class="qc-bar" id="qc-bar"></div>
+        <div class="qc-legend" id="qc-legend"></div>
+      </div>
     </div>
   </aside>
   <div id="map"><button id="btn-reset">US</button></div>
@@ -255,6 +337,8 @@ h2.hs-head{display:flex;align-items:center;justify-content:space-between}
 </script>
 <script type="module">
 import { resample, VALID_CLASSES } from "./resample.js";
+import { initQuery, refreshQueryDb } from "./query.js";
+import { buildActionPlan, planForPrompt } from "./actionplan.js";
 
 // Surface ANY uncaught error (including a top-level throw during module
 // evaluation, before boot() runs) onto the splash — otherwise a silent throw
@@ -324,7 +408,6 @@ function newSeed(){ return (Math.random()*0x100000000)>>>0; }
 const dialStops=Array.from({length:10},(_,i)=>(i+1)*0.005);
 let sevIdx=1;
 let nav={level:'us'};
-let lastHoveredFault=null;   // persists after mouseout, for the model classifier
 
 // ---- per-class severity (0..10 each) → drives Impacted Customers ----
 // Defaults come from config (config.js), falling back to severityDefault.
@@ -551,6 +634,10 @@ function tipHtml(f){
 
 let viewFaults=[];   // flat list of faults currently drawn (for hover hit-testing)
 
+// When a query is active, queryIds holds the matched cell ids; non-matching
+// markers draw dimmed so the matched set pops. null => no query overlay.
+let queryIds=null;
+let queryRing=null;
 function drawPoints(){
   if(ptLayer){map.removeLayer(ptLayer);ptLayer=null;}
   const inView=faultsInView();
@@ -559,10 +646,11 @@ function drawPoints(){
   const opacity=nav.level==='region'?.92:.75;
   const layers=inView.map(f=>{
     const meta=CLASSES[f.answer]||{c:'#888'};
+    const dim = queryIds && !queryIds.has(f.cell_global_id);
     return L.circleMarker([f.latitude,f.longitude],{
-      renderer:ptRenderer, radius,
+      renderer:ptRenderer, radius: dim?radius*0.8:radius,
       fillColor:meta.c, color:'#0a0e14', weight:.6,
-      fillOpacity:opacity, interactive:false,
+      fillOpacity: dim?opacity*0.12:opacity, interactive:false,
     });
   });
   ptLayer=L.layerGroup(layers).addTo(map);
@@ -570,6 +658,25 @@ function drawPoints(){
   if(ptRenderer._container) ptRenderer._container.style.pointerEvents='none';
   document.getElementById('st-shown').textContent=inView.length.toLocaleString();
 }
+// Orange enclosure ring around a query's matched towers.
+function drawQueryRing(rows){
+  if(queryRing){ map.removeLayer(queryRing); queryRing=null; }
+  if(!rows || !rows.length) return;
+  let latS=0,lonS=0;
+  for(const r of rows){ latS+=r.latitude; lonS+=r.longitude; }
+  const lat=latS/rows.length, lon=lonS/rows.length;
+  let maxM=HOTSPOT_MILES*1609.34;   // enclose matches; min ~50mi so small sets read
+  for(const r of rows){
+    const d=map.distance([lat,lon],[r.latitude,r.longitude]);
+    if(d>maxM) maxM=d;
+  }
+  const glow=L.circle([lat,lon],{radius:maxM,pane:'choroPane',
+    color:'#FF6B35',weight:6,opacity:.28,fill:false,interactive:false});
+  const c=L.circle([lat,lon],{radius:maxM,pane:'choroPane',
+    color:'#FFB08A',weight:2.5,opacity:1,fillColor:'#FF6B35',fillOpacity:.12,interactive:false});
+  queryRing=L.layerGroup([glow,c]).addTo(map);
+}
+function clearQueryRing(){ if(queryRing){ map.removeLayer(queryRing); queryRing=null; } }
 
 // ---- hover: map-level mousemove hit-test → one shared tooltip. This avoids a
 // second interactive canvas pane (which would block choropleth drill clicks). ----
@@ -589,7 +696,7 @@ function nearestFault(latlng){
 map.on('mousemove',(e)=>{
   const f=nearestFault(e.latlng);
   if(f){
-    if(f!==hoverFault){ hoverFault=f; lastHoveredFault=f; hoverTip.setContent(tipHtml(f)); }
+    if(f!==hoverFault){ hoverFault=f; hoverTip.setContent(tipHtml(f)); }
     hoverTip.setLatLng([f.latitude,f.longitude]);
     if(!map.hasLayer(hoverTip)) hoverTip.addTo(map);
     L.DomUtil.addClass(map.getContainer(),'fault-hover');
@@ -798,7 +905,7 @@ function buildLegend(){
 }
 
 // re-render the layers + legend that depend on the class filter
-function applyClassFilter(){ drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots(); }
+function applyClassFilter(){ drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots(); syncQueryDb(); syncActionPlan(); }
 
 function resetFilters(){ hiddenClasses.clear(); applyClassFilter(); }
 document.getElementById('ramp').innerHTML=Array.from({length:14},(_,i)=>
@@ -836,7 +943,7 @@ function buildSeverityControls(){
       updateImpactTotal(); updateImpactByClass();   // live aggregate; tooltips recompute on next hover
       clearHotspots();       // severity changing → prior hotspot impact is stale
     };
-    inp.onchange=()=>{ runDetectHotspots(); };   // re-detect once the drag settles
+    inp.onchange=()=>{ runDetectHotspots(); syncQueryDb(); syncActionPlan(); };   // re-detect once the drag settles
   });
 }
 
@@ -850,7 +957,7 @@ function doResample(blend, seed=SEED){
 }
 
 // ---- render: everything that depends on nav + dial + resample ----
-function render(){ frameForView(); drawChoro(); drawPoints(); buildLegend(); updateCrumb(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots(); }
+function render(){ frameForView(); drawChoro(); drawPoints(); buildLegend(); updateCrumb(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots(); syncQueryDb(); syncActionPlan(); }
 
 // ---- wire knobs ----
 function pct(x){return (x*100).toFixed(1)+'%';}
@@ -858,7 +965,7 @@ document.getElementById('sev').oninput=(e)=>{
   sevIdx=+e.target.value-1; const v=dialStops[sevIdx];
   document.getElementById('sev-lbl').textContent=pct(v);
   document.getElementById('st-sev').textContent=pct(v);
-  drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots();   // display-only
+  drawChoro(); drawPoints(); buildLegend(); updateImpactTotal(); updateImpactByClass(); runDetectHotspots(); syncQueryDb(); syncActionPlan();   // display-only
 };
 document.getElementById('btn-reset').onclick=resetToUS;
 document.getElementById('rc-reset').onclick=resetFilters;
@@ -908,59 +1015,243 @@ async function probeModel(){
   }
 }
 
+// ---- NL → SQL + Action Plan prose (ported from the Netlify nl2sql function;
+// runs client-side through the LiteLLM gateway via chatCompletion) ------------
 const CLASS_DEFS=VALID_CLASSES.map(k=>`${k}: ${CLASSES[k].n} — ${CLASSES[k].d}.`).join('\n');
-const SYS_CLASSIFY=
-  "You are a 5G drive-test root-cause classifier for an AT&T RCA triage tool. "+
-  "Given one cell's context, name the single most likely root cause C1–C8 and briefly say why.\n\n"+
-  CLASS_DEFS+"\n\n"+
-  "Answer in 1–2 sentences, starting with the label (e.g. \"C6 — ...\").";
 
-function renderModelReply(text){
-  const esc=(s)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  let html=esc(text).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
-  html=html.replace(/\b(C[1-8])\b/g,(m,c)=>CLASSES[c]
-    ? `<span class="class-chip" style="background:${CLASSES[c].c}22;color:${CLASSES[c].c};border:1px solid ${CLASSES[c].c}55">${c}</span>` : m);
-  return html;
+const Q_SCHEMA=`
+CREATE TABLE faults (
+  cell_global_id TEXT, fault_class TEXT, latitude REAL, longitude REAL,
+  state TEXT, state_name TEXT, region TEXT, nearest_city TEXT,
+  population_served INTEGER, impacted_customers INTEGER
+);
+CREATE TABLE cities (name TEXT, lat REAL, lon REAL);
+-- C1 Downtilt too large | C2 Over-shooting | C3 Neighbor serves better
+-- C4 Overlapping coverage | C5 Frequent handovers | C6 PCI mod-30 collision
+-- C7 High vehicle speed | C8 Too few scheduled RBs`.trim();
+
+const Q_EXAMPLES=`
+Q: show me the issues in Dallas and the surrounding area
+SQL: SELECT f.* FROM faults f, cities c WHERE c.name = 'Dallas' AND f.latitude BETWEEN c.lat - 0.72 AND c.lat + 0.72 AND f.longitude BETWEEN c.lon - 0.85 AND c.lon + 0.85;
+Q: pci collisions in texas
+SQL: SELECT * FROM faults WHERE fault_class = 'C6' AND state = 'TX';
+Q: the worst 20 faults by customer impact
+SQL: SELECT * FROM faults ORDER BY impacted_customers DESC LIMIT 20;
+Q: coverage and overshoot problems in the west
+SQL: SELECT * FROM faults WHERE fault_class IN ('C1','C2') AND region = 'West';`.trim();
+
+const QUERY_SYSTEM=`You translate a question about cell-tower network faults into ONE SQLite SELECT, then briefly say what it returns.
+
+Return STRICT JSON only, no markdown: {"sql": "<one SELECT>", "answer": "<one or two plain sentences>"}.
+
+SQL rules:
+- A single read-only SELECT. Never DROP/DELETE/UPDATE/INSERT/ALTER/CREATE/ATTACH/PRAGMA.
+- Prefer "SELECT f.*" or "SELECT *" from faults so full rows come back.
+- For "near"/"around"/"surrounding area" of a city, JOIN cities and use a ~50-mile box: +/- 0.72 latitude, +/- 0.85 longitude around that city's lat/lon.
+- State codes are uppercase 2-letter (e.g. 'TX'). Match names as given.
+- If unanswerable from these columns: {"sql":"SELECT * FROM faults WHERE 1=0;","answer":"I couldn't map that to the available fault data."}
+
+The "answer" is a short, plain description of what the filter shows (no SQL jargon).
+
+Schema:
+${Q_SCHEMA}
+
+Examples:
+${Q_EXAMPLES}`;
+
+const PLAN_SYSTEM=`You are a NOC (Network Operations Center) planning assistant for a cell-tower fault-triage tool.
+
+You will be given an ALREADY-COMPUTED action plan for a geographic hot spot: its phases, the sites in each, dispatch type, per-phase customer-impact totals, and recalibration flags. The structure and every number are FIXED and correct — DO NOT change, recompute, reorder, or re-bucket anything. Narrate it.
+
+Write a TERSE operational plan. Hard limits:
+1. One short framing sentence (place + total sites + total customers impacted + how many sites need field dispatch).
+2. Then, for each phase IN THE ORDER GIVEN: ONE or at most TWO sentences. Name the work (informed by the fault classes), the labor/resource (Phase 1 = field crew / truck roll; Phases 2-3 = remote NOC engineer, no dispatch), and the net benefit as that phase's customer number. If a phase is flagged "recalibrate after Phase 1", say it must wait until post-dispatch re-measurement — in the same one/two sentences, not extra lines.
+3. One closing sentence on sequencing: batch the field dispatch first, let remote tuning cascade.
+
+Rules:
+- Use the EXACT customer numbers and site counts given. Never invent numbers.
+- Be compact and skimmable. No preamble, no '#' headers. A short **bold** phase label at the start of each phase's sentence is fine.
+- Measure benefit in CUSTOMERS.`;
+
+// JSON/SQL hygiene (same guards the Netlify function applied server-side)
+function safeJson(text){
+  let s=(text||'').replace(/```json/gi,'').replace(/```/g,'').trim();
+  try{ return JSON.parse(s); }catch{}
+  const m=s.match(/\{[\s\S]*\}/);
+  if(m){ try{ return JSON.parse(m[0]); }catch{} }
+  return null;
+}
+function cleanSql(sql){
+  let s=(sql||'').replace(/```sql/gi,'').replace(/```/g,'').trim();
+  const m=s.match(/select[\s\S]*/i);
+  if(m) s=m[0];
+  const semi=s.indexOf(';');
+  if(semi!==-1) s=s.slice(0,semi+1);
+  return s.trim();
 }
 
-async function classifyHovered(){
-  const f=lastHoveredFault;
-  const out=document.getElementById('model-out');
-  const btn=document.getElementById('btn-classify');
-  if(!f){ out.hidden=false; out.dataset.loading=''; out.textContent='Hover a fault marker on the map first, then click Classify.'; return; }
-  const meta=CLASSES[f.answer]||{n:f.answer};
-  const user=
-`Cell: ${f.cell_global_id}
-State: ${f.state||'unknown'} (${f.quadrant||'unknown'} region)
-Radio: ${f.radio||'unknown'}
-Simulated class (ground truth): ${f.answer} (${meta.n})
-Customers served: ${(+f.estimated_population_served||0).toLocaleString()}
-Customers impacted: ${impactedCustomers(f).toLocaleString()}
-Observations: ${f.samples ?? '—'}
+// NL question -> {sql, answer} via the gateway. Throws with a friendly message.
+async function translateQuestion(question){
+  if(!MODEL.ok) throw new Error('No model connection.');
+  const text=await chatCompletion(
+    [{role:'system',content:QUERY_SYSTEM},{role:'user',content:question}],
+    {max_tokens:500});
+  const parsed=safeJson(text);
+  return { sql:cleanSql(parsed?.sql||''), answer:(parsed?.answer||'').trim() };
+}
 
-Validate the simulated class or propose a better one, and state the KPI that would confirm it.`;
-  btn.disabled=true; out.hidden=false; out.dataset.loading='1'; out.textContent='Classifying…';
-  try{
-    const reply=await chatCompletion(
-      [{role:'system',content:SYS_CLASSIFY},{role:'user',content:user}],
-      {max_tokens:400});
-    out.dataset.loading=''; out.innerHTML=renderModelReply(reply||'(empty response)');
-  }catch(e){
-    out.dataset.loading=''; out.textContent=`Model error: ${e.message}`;
-  }finally{
-    btn.disabled=false;
+// light inline-bold renderer for model prose (**bold** -> <b>)
+function renderProse(text){
+  const esc=(s)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc(text).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+}
+
+// ---- NL query integration ---------------------------------------------------
+function currentQueryFaults(){ return faultsInView(); }
+
+// Stacked bar: the fault-class blend of the matched set, legend colors.
+function renderQueryChart(rows){
+  const chart=document.getElementById('q-chart');
+  const bar=document.getElementById('qc-bar');
+  const leg=document.getElementById('qc-legend');
+  const tot=document.getElementById('qc-total');
+  if(!chart||!bar||!leg) return;
+  if(!rows||!rows.length){ chart.hidden=true; return; }
+  const counts={}; for(const r of rows){ const k=r.fault_class; counts[k]=(counts[k]||0)+1; }
+  const total=rows.length;
+  tot.textContent=`${total.toLocaleString()} tower${total===1?'':'s'}`;
+  bar.innerHTML=VALID_CLASSES.filter(k=>counts[k]).map(k=>{
+    const m=CLASSES[k]; const pct=(counts[k]/total*100);
+    return `<div class="qc-seg" style="width:${pct}%;background:${m.c}"
+      title="${k} · ${m.n}: ${counts[k].toLocaleString()} (${pct.toFixed(0)}%)"></div>`;
+  }).join('');
+  leg.innerHTML=VALID_CLASSES.filter(k=>counts[k]).map(k=>{
+    const m=CLASSES[k];
+    return `<span class="qc-key"><span class="dot" style="background:${m.c}"></span>${k}
+      <span class="n">${counts[k].toLocaleString()}</span></span>`;
+  }).join('');
+  chart.hidden=false;
+}
+
+// A query result: dim non-matches, fit bounds to the matched set, draw the bar.
+function onQueryResult({rows, ids, answer}){
+  queryIds = ids && ids.size ? ids : null;
+  document.getElementById('q-clear').hidden = !queryIds;
+  drawPoints();
+  renderQueryChart(rows);
+  const ans=document.getElementById('q-answer');
+  if(ans){ ans.textContent=answer||''; ans.hidden=!answer; }
+  if(rows && rows.length){
+    const pts=rows.map(r=>[r.latitude,r.longitude]);
+    const b=L.latLngBounds(pts).pad(0.15);
+    map.fitBounds(b,{animate:true});   // clamped by the current view's maxBounds
+    drawQueryRing(rows);
+  } else {
+    clearQueryRing();
   }
+}
+function onQueryClear(){
+  queryIds=null;
+  document.getElementById('q-clear').hidden=true;
+  document.getElementById('q-chart').hidden=true;
+  const ans=document.getElementById('q-answer'); if(ans) ans.hidden=true;
+  clearQueryRing();
+  drawPoints();
+  frameForView(true);
+}
+// Flush before a NEW query runs: like clear, but no re-frame (the incoming
+// query sets its own bounds). Every query starts residue-free.
+function onQueryFlush(){
+  queryIds=null;
+  clearQueryRing();
+  const ch=document.getElementById('q-chart'); if(ch) ch.hidden=true;
+  const ans=document.getElementById('q-answer'); if(ans) ans.hidden=true;
+  drawPoints();
+}
+
+// Fault set changed (resample, filter, drill, severity, dial): rebuild the
+// query DB and clear any stale highlight — matched ids may no longer exist.
+function syncQueryDb(){
+  refreshQueryDb();
+  if(queryIds){
+    queryIds=null;
+    const clr=document.getElementById('q-clear'); if(clr) clr.hidden=true;
+    const ch=document.getElementById('q-chart'); if(ch) ch.hidden=true;
+    const ans=document.getElementById('q-answer'); if(ans) ans.hidden=true;
+    clearQueryRing();
+  }
+}
+
+// ---- Hot Spot Action Plan (deterministic structure + model prose) -----------
+// In this build the hotspot IS a filter (nav.level==='hotspot'), so the plan's
+// member faults are exactly faultsInView() — the same set the hbars, impact
+// total, and markers show. Numbers can't disagree across panels.
+let planProseFor=null;   // label of the hotspot whose prose was last drafted
+
+function renderPlanSkeleton(plan, place){
+  const wrap=document.getElementById('plan-sec');
+  const phasesEl=document.getElementById('qp-phases');
+  const titleEl=document.getElementById('qp-title');
+  if(!wrap||!phasesEl) return;
+  titleEl.textContent=`Action Plan · ${place||'hot spot'}`;
+  const roll=`<div class="qp-dispatch-roll">Sites requiring field dispatch: <b>${plan.totals.dispatchSites}</b>
+     · ${plan.totals.sites} sites total · ${plan.totals.customers.toLocaleString()} customers impacted</div>`;
+  phasesEl.innerHTML=roll+plan.phases.map(ph=>`
+    <div class="qp-phase p${ph.phase}">
+      <div class="qp-prow">
+        <span class="qp-pname">${ph.icon} Phase ${ph.phase} · ${ph.name}</span>
+        <span class="qp-disp ${ph.dispatch==='field'?'field':'remote'}">${ph.dispatch==='field'?'Field':'Remote'}</span>
+      </div>
+      <div class="qp-pmeta">${ph.sites} site${ph.sites===1?'':'s'} · <b>${ph.customers.toLocaleString()}</b> customers</div>
+      ${ph.recalibrate?`<span class="qp-recal">⚑ recalibrate after Phase 1 coverage fixes</span>`:''}
+    </div>`).join('');
+  wrap.hidden=false;
+}
+
+function hideActionPlan(){
+  const p=document.getElementById('plan-sec'); if(p) p.hidden=true;
+  planProseFor=null;
+}
+
+// Rebuild the skeleton for the ACTIVE hotspot from live numbers. Draft the
+// model prose only when (re)entering a hotspot — not on every dial twitch.
+function syncActionPlan({draftProse=false}={}){
+  if(nav.level!=='hotspot'){ hideActionPlan(); return; }
+  const members=faultsInView();
+  const place=hotspotLabel(nav.hs);
+  const plan=buildActionPlan(members, impactedCustomers);
+  renderPlanSkeleton(plan, place);
+  const proseEl=document.getElementById('qp-prose');
+  if(!MODEL.ok){
+    proseEl.dataset.loading='';
+    proseEl.textContent='';
+    return;                       // deterministic skeleton stands alone
+  }
+  if(!draftProse && planProseFor===place) return;   // keep existing narrative
+  planProseFor=place;
+  proseEl.dataset.loading='1';
+  proseEl.textContent='Drafting the operational narrative…';
+  chatCompletion(
+    [{role:'system',content:PLAN_SYSTEM},
+     {role:'user',content:`Hot spot: ${place}\n\nHere is the computed action plan. Narrate it per your instructions; keep all numbers exactly:\n\n${planForPrompt(plan, place)}`}],
+    {max_tokens:900}
+  ).then(text=>{
+    if(planProseFor!==place || nav.level!=='hotspot') return;  // stale reply
+    proseEl.dataset.loading='';
+    proseEl.innerHTML=renderProse(text||'');
+  }).catch(e=>{
+    if(planProseFor!==place) return;
+    proseEl.dataset.loading='';
+    proseEl.textContent=`Couldn't draft the narrative (${e.message}). The phase breakdown above is still valid.`;
+  });
 }
 
 function enableModelUI(){
   MODEL.ok=true;
-  const panel=document.getElementById('model-panel');
-  const badge=document.getElementById('model-badge');
-  const btn=document.getElementById('btn-classify');
-  badge.textContent=MODEL.name;
-  panel.hidden=false;
-  btn.disabled=false;
-  btn.onclick=classifyHovered;
+  document.getElementById('model-badge').textContent=MODEL.name;
+  document.getElementById('query').hidden=false;
+  // if a hotspot filter is already active, its plan can now get a narrative
+  if(nav.level==='hotspot') syncActionPlan({draftProse:true});
 }
 
 async function boot(){
@@ -980,6 +1271,16 @@ async function boot(){
   stage('rendering…');
   render();
   document.getElementById('splash').style.display='none';
+  // NL query panel: engine + DB warm up now; the panel itself stays hidden
+  // unless the model probe succeeds (translation needs the gateway).
+  initQuery({
+    getFaults: currentQueryFaults,
+    impacted: impactedCustomers,
+    translate: translateQuestion,
+    onResult: onQueryResult,
+    onClear: onQueryClear,
+    onFlush: onQueryFlush,
+  });
   // Probe the model last, so a slow/failing gateway never blocks the map.
   probeModel().then(ok=>{ if(ok) enableModelUI(); });
 }
