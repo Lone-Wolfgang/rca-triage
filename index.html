@@ -602,7 +602,7 @@ function drawChoro(){
 // Tooltip HTML for a fault: class + label, customers served, customers impacted.
 function tipHtml(f){
   const meta=CLASSES[f.answer]||{c:'#888',n:f.answer};
-  const served=+f.estimated_population_served||0;
+  const served=Math.round(+f.estimated_population_served||0);
   const impacted=impactedCustomers(f);
   return `<div style="min-width:150px">
     <div style="display:flex;align-items:center;gap:6px;font-weight:600;margin-bottom:4px">
