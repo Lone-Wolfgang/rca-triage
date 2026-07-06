@@ -104,9 +104,10 @@ STATE_TO_QUADRANT = {
 
 # --- Population apportionment tunables --------------------------------------
 ATT_MARKET_SHARE = 0.45   # final multiplier on apportioned population.
-K_NEAREST = 1             # towers each block group splits its population across.
+APPORTION_RADIUS_M = 8046.7   # 5 mi: block group splits across towers within this radius.
+IDW_POWER = 1.0           # inverse-distance weight exponent (1 = 1/d, 2 = 1/d^2).
 POP_FLOOR = 1.0           # towers that win no block group still get nonzero impact.
-EQUAL_AREA_CRS = "EPSG:5070"   # CONUS Albers; "nearest" in meters, not degrees.
+EQUAL_AREA_CRS = "EPSG:5070"   # CONUS Albers; radius/distance in meters, not degrees.
 
 # ACS 5-year total population (block-group geography).
 CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
@@ -377,7 +378,8 @@ def load_acs_bg(acs_path, api_key):
 
 
 def stage_population(cells: pd.DataFrame, acs_path, api_key,
-                     k: int, market_share: float, pop_floor: float) -> pd.DataFrame:
+                     radius_m: float, idw_power: float,
+                     market_share: float, pop_floor: float) -> pd.DataFrame:
     import geopandas as gpd
     from scipy.spatial import cKDTree
     log.info("=== STAGE 3: POPULATION (ACS apportionment -> customers served) ===")
@@ -401,18 +403,42 @@ def stage_population(cells: pd.DataFrame, acs_path, api_key,
     bg_xy = np.column_stack([cent.x.values, cent.y.values])
     bg_pop = pd.to_numeric(bg_p["population"], errors="coerce").fillna(0).clip(lower=0).values
 
-    kk = max(1, k)
-    log.info("[pop] KD-tree over %s towers; querying %s block groups (k=%d)",
-             f"{len(tower_xy):,}", f"{len(bg_xy):,}", kk)
+    log.info("[pop] KD-tree over %s towers; querying %s block groups "
+             "(radius=%.0f m, idw_power=%.1f)",
+             f"{len(tower_xy):,}", f"{len(bg_xy):,}", radius_m, idw_power)
     tree = cKDTree(tower_xy)
-    dist, idx = tree.query(bg_xy, k=kk)
-    if kk == 1:
-        idx = idx[:, None]
+
+    # Each block group distributes its population across all towers within
+    # radius_m, inverse-distance weighted. Towers nearer a block-group centroid
+    # carry more of its residents; dense clusters share, so no single tower
+    # wins a whole block group (the source of the 1-vs-1000 spikes).
+    neighbors = tree.query_ball_point(bg_xy, r=radius_m)
 
     served = np.zeros(len(tower_xy), dtype="float64")
-    share = bg_pop / kk
-    for j in range(kk):
-        np.add.at(served, idx[:, j], share)
+    unassigned = []                       # block groups with no tower in radius
+    eps = 1.0                             # metres; avoids divide-by-zero at d=0
+    for i, nbr in enumerate(neighbors):
+        pop_i = bg_pop[i]
+        if pop_i <= 0:
+            continue
+        if not nbr:
+            unassigned.append(i)
+            continue
+        nbr = np.asarray(nbr)
+        d = np.linalg.norm(tower_xy[nbr] - bg_xy[i], axis=1)
+        w = 1.0 / np.power(np.maximum(d, eps), idw_power)
+        w /= w.sum()
+        np.add.at(served, nbr, pop_i * w)
+
+    # Fallback: block groups outside every tower's radius go to the single
+    # nearest tower, so no population is silently dropped in sparse rural areas.
+    if unassigned:
+        ua = np.asarray(unassigned)
+        _, nearest = tree.query(bg_xy[ua], k=1)
+        np.add.at(served, nearest, bg_pop[ua])
+        log.info("[pop] %s block groups beyond radius -> nearest-tower fallback",
+                 f"{len(ua):,}")
+
     served *= market_share
     served = np.maximum(served, pop_floor)
 
@@ -619,8 +645,11 @@ def main():
                     "If omitted, pulled live via CENSUS_API_KEY.")
     ap.add_argument("--census-api-key", default=CENSUS_API_KEY,
                     help="Census API key (or set CENSUS_API_KEY env)")
-    ap.add_argument("--k", type=int, default=K_NEAREST,
-                    help=f"nearest towers a block group splits across (default {K_NEAREST})")
+    ap.add_argument("--radius-mi", type=float, default=APPORTION_RADIUS_M / 1609.34,
+                    help="radius (miles) a block group spreads population across "
+                         f"(default {APPORTION_RADIUS_M / 1609.34:.1f})")
+    ap.add_argument("--idw-power", type=float, default=IDW_POWER,
+                    help=f"inverse-distance weight exponent (default {IDW_POWER})")
     ap.add_argument("--market-share", type=float, default=ATT_MARKET_SHARE,
                     help=f"AT&T share multiplier (default {ATT_MARKET_SHARE})")
     ap.add_argument("--pop-floor", type=float, default=POP_FLOOR,
@@ -632,7 +661,7 @@ def main():
                     help="skip ACS population apportionment")
     ap.add_argument("--no-city", action="store_true",
                     help="skip nearest-city labeling")
-    ap.add_argument("--out", default="att_us_dataset.parquet")
+    ap.add_argument("--out", default="/Users/jwkle/Documents/RCA/ETL/data/intermediate/att_us_dataset.parquet")
     ap.add_argument("-v", "--verbose", action="store_true", help="DEBUG logging")
     args = ap.parse_args()
 
@@ -656,7 +685,8 @@ def main():
         log.info("=== STAGE 3: POPULATION skipped (--no-population) ===")
     else:
         df = stage_population(df, args.acs_bg, args.census_api_key,
-                              args.k, args.market_share, args.pop_floor)
+                              args.radius_mi * 1609.34, args.idw_power,
+                              args.market_share, args.pop_floor)
 
     # STAGE 4 -- city
     if args.no_city:
