@@ -113,7 +113,7 @@ def build_columnar(df: pd.DataFrame, conus: bool = False) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Export columnar browser pool from cells parquet.")
-    ap.add_argument("--cells", help="/Users/jwkle/Documents/RCA/ETL/data/intermediate/att_us_dataset.parquet")
+    ap.add_argument("--cells", default="/Users/jwkle/Documents/RCA/ETL/data/intermediate/att_us_dataset.parquet")
     ap.add_argument("--out", default="pool.json", help="output JSON path")
     ap.add_argument("--gzip", action="store_true", help="also write <out>.gz")
     ap.add_argument("--conus", action="store_true",

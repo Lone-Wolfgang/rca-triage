@@ -106,13 +106,19 @@ STATE_TO_QUADRANT = {
 ATT_MARKET_SHARE = 0.45   # final multiplier on apportioned population.
 APPORTION_RADIUS_M = 8046.7   # 5 mi: block group splits across towers within this radius.
 IDW_POWER = 1.0           # inverse-distance weight exponent (1 = 1/d, 2 = 1/d^2).
+FALLBACK_CAP_M = 16093.4  # 10 mi: orphan block groups beyond this from any tower are
+                          #        treated as UNCOVERED and excluded (their residents are
+                          #        not AT&T-reachable). Below the cap, an orphan falls back
+                          #        to its single nearest tower. Set very large to disable.
 POP_FLOOR = 1.0           # towers that win no block group still get nonzero impact.
 EQUAL_AREA_CRS = "EPSG:5070"   # CONUS Albers; radius/distance in meters, not degrees.
 
 # ACS 5-year total population (block-group geography).
 CENSUS_API_KEY = os.getenv("CENSUS_API_KEY")
 ACS_YEAR = 2023
-ACS_POP_VAR = "B01003_001E"
+ACS_POP_VAR = "B01003_001E"          # total population
+ACS_U18_VAR = "B09001_001E"          # population under 18 (adults = total - under18)
+ADULT_SHARE_FALLBACK = 0.775         # national 18+ share; only used if under-18 data absent
 ACS_SENTINELS = {-666666666, -999999999, -888888888, -555555555, -333333333, -222222222}
 ACS_BG_GEO_URL = "https://www2.census.gov/geo/tiger/GENZ2022/shp/cb_2022_us_bg_500k.zip"
 ACS_BG_CACHE = "acs_bg_pop.parquet"
@@ -313,7 +319,7 @@ def fetch_acs_bg(api_key, cache: Path):
     frames, errors = [], []
     log.info("[pop] pulling ACS block-group population per state")
     for fp in (f"{i:02d}" for i in range(1, 57)):
-        params = {"get": f"NAME,{ACS_POP_VAR}", "for": "block group:*",
+        params = {"get": f"NAME,{ACS_POP_VAR},{ACS_U18_VAR}", "for": "block group:*",
                   "in": f"state:{fp} county:*", "key": api_key}
         try:
             r = requests.get(base, params=params, timeout=180)
@@ -331,7 +337,8 @@ def fetch_acs_bg(api_key, cache: Path):
         d = pd.DataFrame(data, columns=hdr)
         d["GEOID"] = d["state"] + d["county"] + d["tract"] + d["block group"]
         d["population"] = pd.to_numeric(d[ACS_POP_VAR], errors="coerce")
-        frames.append(d[["GEOID", "population"]])
+        d["under18"] = pd.to_numeric(d[ACS_U18_VAR], errors="coerce")
+        frames.append(d[["GEOID", "population", "under18"]])
 
     if not frames:
         msg = "\n".join(f"  state {fp}: {err}" for fp, err in errors[:8])
@@ -342,14 +349,31 @@ def fetch_acs_bg(api_key, cache: Path):
         log.info("[pop] %d state requests returned no data (FIPS gaps / transient)",
                  len(errors))
     pop = pd.concat(frames, ignore_index=True)
-    pop.loc[pop["population"].isin(ACS_SENTINELS), "population"] = 0
+    for col in ("population", "under18"):
+        pop.loc[pop[col].isin(ACS_SENTINELS), col] = np.nan
     pop["population"] = pop["population"].fillna(0).clip(lower=0)
-    log.info("[pop]   %s block groups with population", f"{len(pop):,}")
+    # under-18 can be a valid 0; only genuinely missing values fall back
+    pop["under18"] = pop["under18"].clip(lower=0)
+    # adult population per block group = total - under18, clamped to [0, total].
+    # where under18 is missing (NaN), derive adults via the national share so the
+    # block group is not silently zeroed out.
+    derived = pop["under18"].isna()
+    pop["adult_population"] = (pop["population"] - pop["under18"]).clip(lower=0)
+    pop.loc[derived, "adult_population"] = pop.loc[derived, "population"] * ADULT_SHARE_FALLBACK
+    pop["adult_population"] = pop[["adult_population", "population"]].min(axis=1)
+    pop = pop.drop(columns="under18")
+    if int(derived.sum()):
+        log.info("[pop]   %s block groups missing under-18 data -> adult share "
+                 "derived at %.1f%%", f"{int(derived.sum()):,}", 100 * ADULT_SHARE_FALLBACK)
+    log.info("[pop]   %s block groups with population "
+             "(adults = %.1f%% of total)", f"{len(pop):,}",
+             100 * pop["adult_population"].sum() / max(pop["population"].sum(), 1))
 
     log.info("[pop] loading block-group geometry")
     bg = gpd.read_file(ACS_BG_GEO_URL)[["GEOID", "geometry"]]
     bg = bg.merge(pop, on="GEOID", how="left")
     bg["population"] = bg["population"].fillna(0)
+    bg["adult_population"] = bg["adult_population"].fillna(0)
     bg = bg.to_crs("EPSG:4326")
     try:
         bg.to_parquet(cache)
@@ -357,6 +381,21 @@ def fetch_acs_bg(api_key, cache: Path):
     except Exception as e:
         log.warning("[pop]   cache skipped (%s)", e)
     return bg
+
+
+def _ensure_adult_col(gdf):
+    """Guarantee an adult_population column. Derive from the national share if a
+    cache/file predates the under-18 fetch, so old artifacts don't crash."""
+    if "adult_population" not in gdf.columns:
+        log.warning("[pop] no adult_population column found -> deriving at %.1f%% "
+                    "of total (rebuild the ACS cache for true per-area shares)",
+                    100 * ADULT_SHARE_FALLBACK)
+        gdf["adult_population"] = pd.to_numeric(
+            gdf["population"], errors="coerce").fillna(0).clip(lower=0) * ADULT_SHARE_FALLBACK
+    else:
+        gdf["adult_population"] = pd.to_numeric(
+            gdf["adult_population"], errors="coerce").fillna(0).clip(lower=0)
+    return gdf
 
 
 def load_acs_bg(acs_path, api_key):
@@ -371,14 +410,15 @@ def load_acs_bg(acs_path, api_key):
         gdf = gdf.rename(columns={cols.get("geoid", "GEOID"): "GEOID"})
         if "population" not in gdf.columns:
             sys.exit("--acs-bg must have a 'population' column (or B01003_001E).")
+        gdf = _ensure_adult_col(gdf)
         if gdf.crs is None:
             gdf = gdf.set_crs("EPSG:4326")
         return gdf.to_crs("EPSG:4326")
-    return fetch_acs_bg(api_key, Path(ACS_BG_CACHE))
+    return _ensure_adult_col(fetch_acs_bg(api_key, Path(ACS_BG_CACHE)))
 
 
 def stage_population(cells: pd.DataFrame, acs_path, api_key,
-                     radius_m: float, idw_power: float,
+                     radius_m: float, idw_power: float, fallback_cap_m: float,
                      market_share: float, pop_floor: float) -> pd.DataFrame:
     import geopandas as gpd
     from scipy.spatial import cKDTree
@@ -401,7 +441,13 @@ def stage_population(cells: pd.DataFrame, acs_path, api_key,
     bg_p = bg.to_crs(EQUAL_AREA_CRS)
     cent = bg_p.geometry.representative_point()
     bg_xy = np.column_stack([cent.x.values, cent.y.values])
-    bg_pop = pd.to_numeric(bg_p["population"], errors="coerce").fillna(0).clip(lower=0).values
+    # Apportion ADULT (18+) population — the addressable subscriber base — using
+    # each block group's true per-area adult share from ACS (not a flat factor).
+    bg_pop = pd.to_numeric(bg_p["adult_population"], errors="coerce").fillna(0).clip(lower=0).values
+    bg_total = pd.to_numeric(bg_p["population"], errors="coerce").fillna(0).clip(lower=0).values
+    log.info("[pop] apportioning ADULT population: %s of %s total (%.1f%%)",
+             f"{bg_pop.sum():,.0f}", f"{bg_total.sum():,.0f}",
+             100 * bg_pop.sum() / max(bg_total.sum(), 1))
 
     log.info("[pop] KD-tree over %s towers; querying %s block groups "
              "(radius=%.0f m, idw_power=%.1f)",
@@ -430,14 +476,22 @@ def stage_population(cells: pd.DataFrame, acs_path, api_key,
         w /= w.sum()
         np.add.at(served, nbr, pop_i * w)
 
-    # Fallback: block groups outside every tower's radius go to the single
-    # nearest tower, so no population is silently dropped in sparse rural areas.
+    # Fallback (capped): a block group outside every tower's apportionment
+    # radius falls back to its single nearest tower ONLY if that tower is within
+    # fallback_cap_m. Beyond the cap, the community is treated as genuinely
+    # UNCOVERED (no AT&T service in reach) and its residents are excluded from
+    # the served total -- so the simulation reflects real coverage gaps rather
+    # than force-assigning distant populations to isolated rural towers.
     if unassigned:
         ua = np.asarray(unassigned)
-        _, nearest = tree.query(bg_xy[ua], k=1)
-        np.add.at(served, nearest, bg_pop[ua])
-        log.info("[pop] %s block groups beyond radius -> nearest-tower fallback",
-                 f"{len(ua):,}")
+        dist_near, nearest = tree.query(bg_xy[ua], k=1)
+        within_cap = dist_near <= fallback_cap_m
+        np.add.at(served, nearest[within_cap], bg_pop[ua][within_cap])
+        excluded_pop = float(bg_pop[ua][~within_cap].sum())
+        log.info("[pop] %s orphan BGs: %s within %.0f m -> nearest tower; "
+                 "%s beyond cap EXCLUDED (%s residents uncovered)",
+                 f"{len(ua):,}", f"{int(within_cap.sum()):,}", fallback_cap_m,
+                 f"{int((~within_cap).sum()):,}", f"{excluded_pop:,.0f}")
 
     served *= market_share
     served = np.maximum(served, pop_floor)
@@ -448,7 +502,18 @@ def stage_population(cells: pd.DataFrame, acs_path, api_key,
 
     s = out["estimated_population_served"]
     at_floor = int((s <= pop_floor).sum())
-    log.info("[pop] BG population total: %s", f"{float(bg_pop.sum()):,.0f}")
+    adult_pop = float(bg_pop.sum())          # bg_pop is adult (18+) population
+    served_total = float(s.sum())
+    # With a finite fallback cap, served_total is BELOW adult_pop * market_share
+    # by the share of adults living beyond coverage. Coverage ratio = fraction of
+    # the (market-share-scaled) ADULT population actually reachable by some tower.
+    expected_full = adult_pop * market_share
+    coverage_ratio = served_total / expected_full if expected_full else 0.0
+    log.info("[pop] adult (18+) population total: %s", f"{adult_pop:,.0f}")
+    log.info("[pop] served total: %s  (%.1f%% of adult_pop x %.2f = %s; "
+             "remainder is adult population beyond coverage cap)",
+             f"{served_total:,.0f}", 100 * coverage_ratio, market_share,
+             f"{expected_full:,.0f}")
     log.info("[pop] served per tower  min=%.1f  median=%.1f  max=%.1f",
              s.min(), s.median(), s.max())
     log.info("[pop] towers at floor (%.0f): %s / %s (%.1f%%)",
@@ -650,6 +715,10 @@ def main():
                          f"(default {APPORTION_RADIUS_M / 1609.34:.1f})")
     ap.add_argument("--idw-power", type=float, default=IDW_POWER,
                     help=f"inverse-distance weight exponent (default {IDW_POWER})")
+    ap.add_argument("--fallback-cap-mi", type=float, default=FALLBACK_CAP_M / 1609.34,
+                    help="max miles an orphan block group reaches to its nearest tower; "
+                         "beyond this it is excluded as uncovered "
+                         f"(default {FALLBACK_CAP_M / 1609.34:.1f})")
     ap.add_argument("--market-share", type=float, default=ATT_MARKET_SHARE,
                     help=f"AT&T share multiplier (default {ATT_MARKET_SHARE})")
     ap.add_argument("--pop-floor", type=float, default=POP_FLOOR,
@@ -686,6 +755,7 @@ def main():
     else:
         df = stage_population(df, args.acs_bg, args.census_api_key,
                               args.radius_mi * 1609.34, args.idw_power,
+                              args.fallback_cap_mi * 1609.34,
                               args.market_share, args.pop_floor)
 
     # STAGE 4 -- city
