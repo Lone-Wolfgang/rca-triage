@@ -622,26 +622,59 @@ let viewFaults=[];   // flat list of faults currently drawn (for hover hit-testi
 // markers draw dimmed so the matched set pops. null => no query overlay.
 let queryIds=null;
 let queryRing=null;
+// circleMarker is screen-space: fixed pixels regardless of zoom, so as towers
+// spread apart on zoom-in the dots occupy less of the view and read as shrinking.
+// Compensate by stepping radius/weight/fillOpacity up at deeper zooms, and use a
+// light halo stroke (not the old near-invisible dark ring) so pale classes (C5
+// sky, C3/C4 teal-blues) hold contrast against the dark basemap + choropleth.
+const DOT_STROKE='#e8eef5';   // light halo — legibility for low-contrast hues
+function styleForZoom(z){
+  // buckets: US/continental (~z4-5) → regional zoom (~z6-7) → close (z8+)
+  const regionBoost = nav.level==='region' ? 0.6 : 0;
+  let radius, weight, fillOpacity;
+  if(z>=8){        radius=5.5; weight=1.3; fillOpacity=.95; }
+  else if(z>=6){   radius=4;   weight=1.1; fillOpacity=.9;  }
+  else {           radius=2.5; weight=.9;  fillOpacity=.78; }
+  return { radius: radius+regionBoost, weight, fillOpacity };
+}
+// Apply the current-zoom style to one marker, honoring its dim (query) state.
+function styleDot(l,s){
+  const f=l.__fault;
+  const dim = queryIds && f && !queryIds.has(f.cell_global_id);
+  l.setRadius(dim?s.radius*0.8:s.radius);
+  l.setStyle({ weight: dim?s.weight*0.6:s.weight,
+               fillOpacity: dim?s.fillOpacity*0.16:s.fillOpacity });
+}
 function drawPoints(){
   if(ptLayer){map.removeLayer(ptLayer);ptLayer=null;}
   const inView=faultsInView();
   viewFaults=inView;
-  const radius=nav.level==='region'?4:2.5;
-  const opacity=nav.level==='region'?.92:.75;
+  const s=styleForZoom(map.getZoom());
   const layers=inView.map(f=>{
     const meta=CLASSES[f.answer]||{c:'#888'};
     const dim = queryIds && !queryIds.has(f.cell_global_id);
-    return L.circleMarker([f.latitude,f.longitude],{
-      renderer:ptRenderer, radius: dim?radius*0.8:radius,
-      fillColor:meta.c, color:'#0a0e14', weight:.6,
-      fillOpacity: dim?opacity*0.12:opacity, interactive:false,
+    const m=L.circleMarker([f.latitude,f.longitude],{
+      renderer:ptRenderer,
+      radius: dim?s.radius*0.8:s.radius,
+      fillColor:meta.c, color:DOT_STROKE, weight: dim?s.weight*0.6:s.weight,
+      fillOpacity: dim?s.fillOpacity*0.16:s.fillOpacity, interactive:false,
     });
+    m.__fault=f;   // stash for in-place restyle on zoom
+    return m;
   });
   ptLayer=L.layerGroup(layers).addTo(map);
   // Keep markers click-transparent so region drill-in (choropleth below) still works.
   if(ptRenderer._container) ptRenderer._container.style.pointerEvents='none';
   document.getElementById('st-shown').textContent=inView.length.toLocaleString();
 }
+// Zoom changes screen density but NOT which faults are drawn (faultsInView scopes
+// by nav state, not viewport), so restyle existing markers in place instead of
+// rebuilding the layer — no faultsInView() recompute, no reallocation, one repaint.
+map.on('zoomend',()=>{
+  if(!ptLayer) return;
+  const s=styleForZoom(map.getZoom());
+  ptLayer.eachLayer(l=>styleDot(l,s));
+});
 // Orange enclosure ring around a query's matched towers.
 function drawQueryRing(rows){
   if(queryRing){ map.removeLayer(queryRing); queryRing=null; }
