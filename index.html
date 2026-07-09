@@ -1161,9 +1161,11 @@ function onQueryClear(){
   document.getElementById('q-clear').hidden=true;
   const ans=document.getElementById('q-answer'); if(ans) ans.hidden=true;
   clearQueryRing();
-  drawPoints();
-  updateImpactTotal(); updateImpactByClass();
-  frameForView(true);
+  // Reset the drill too: Ctrl+Delete is a full "pan out to US", so a voice
+  // drill (region/hotspot) is popped back to the national view, not left
+  // zoomed in. render() rebuilds every panel for the US level.
+  if(nav.level!=='us'){ nav={level:'us'}; render(); }
+  else { drawPoints(); updateImpactTotal(); updateImpactByClass(); frameForView(true); }
 }
 // Flush before a NEW query runs. A query spans the whole dataset, so entering
 // query mode RESETS the region/hotspot drill and class toggles (they and the

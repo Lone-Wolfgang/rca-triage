@@ -238,7 +238,7 @@ export async function initQuery(options) {
     if (e.key === "Enter") {           // Ctrl+Return -> run
       e.preventDefault();
       submitQuery(input);
-    } else if (e.key === "Backspace") { // Ctrl+Backspace -> clear
+    } else if (e.key === "Backspace" || e.key === "Delete") { // Ctrl+Delete/Backspace -> clear
       e.preventDefault();
       clearQuery(input);
     } else if (e.key === "/") {         // Ctrl+/ -> focus the box
