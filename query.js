@@ -182,23 +182,26 @@ function hideSqlReveal() {
   if (wrap) wrap.hidden = true;
 }
 
-// --- Auto-run on speech/typing pause (debounce) ---
-// macOS Dictation types into #q-input character-by-character and emits no
-// "dictation finished" event, so we infer "done speaking" from a quiet gap:
-// when the input stops changing for AUTORUN_MS, we fire the query on the same
-// path as pressing Enter. Enter still works as an instant override.
-const AUTORUN_MS = 1200;   // pause length that counts as "done speaking"
-const AUTORUN_MIN_LEN = 3; // don't fire on a stray char / mic pop
-let autorunTimer = null;
-let lastSubmitted = "";    // dedup: never run the same text twice in a row
-
+// --- Query actions (shared by clicks, Enter, and global hotkeys) ---
+// The demo is driven hands-on-keyboard: focus the box, dictate, run, clear.
+// Global hotkeys (bound in initQuery) so they work even when the cursor is
+// NOT in the search box:
+//   Ctrl+Return    -> run the current query
+//   Ctrl+Backspace -> clear the panel back to unfiltered
+//   Ctrl+/         -> focus the search box (ready to dictate)
 function submitQuery(inputEl) {
-  if (autorunTimer) { clearTimeout(autorunTimer); autorunTimer = null; }
   const q = (inputEl.value || "").trim();
-  if (!q) return;
-  if (q === lastSubmitted) return; // Enter + timer, or repeat — run once
-  lastSubmitted = q;
-  runQuestion(q);
+  if (q) {
+    runQuestion(q);
+    inputEl.value = ""; // empty the box so the next dictation starts clean
+  }
+}
+
+function clearQuery(inputEl) {
+  inputEl.value = "";
+  setStatus("", "");
+  hideSqlReveal();
+  cfg.onClear && cfg.onClear();
 }
 
 export async function initQuery(options) {
@@ -209,35 +212,29 @@ export async function initQuery(options) {
   const clear = document.getElementById("q-clear");
   if (!form || !input) return;
 
-  // Enter (or the form's submit button) — instant, manual override.
+  // Return (or the form's submit button) — runs when the box is focused.
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     submitQuery(input);
   });
 
-  // Debounced auto-run: each incoming character (dictation or typing) resets
-  // the timer; when input goes quiet for AUTORUN_MS, submit automatically.
-  input.addEventListener("input", () => {
-    if (autorunTimer) clearTimeout(autorunTimer);
-    const q = (input.value || "").trim();
-    // If the field was edited to something new, allow it to run again.
-    if (q !== lastSubmitted) { /* fall through to arm timer */ }
-    if (q.length < AUTORUN_MIN_LEN) return;
-    autorunTimer = setTimeout(() => {
-      autorunTimer = null;
+  // Global hotkeys — bound on document so they fire regardless of focus.
+  document.addEventListener("keydown", (e) => {
+    if (!e.ctrlKey || e.metaKey || e.altKey) return; // Control only
+    if (e.key === "Enter") {           // Ctrl+Return -> run
+      e.preventDefault();
       submitQuery(input);
-    }, AUTORUN_MS);
+    } else if (e.key === "Backspace") { // Ctrl+Backspace -> clear
+      e.preventDefault();
+      clearQuery(input);
+    } else if (e.key === "/") {         // Ctrl+/ -> focus the box
+      e.preventDefault();
+      input.focus();
+    }
   });
 
   if (clear) {
-    clear.addEventListener("click", () => {
-      input.value = "";
-      lastSubmitted = "";
-      if (autorunTimer) { clearTimeout(autorunTimer); autorunTimer = null; }
-      setStatus("", "");
-      hideSqlReveal();
-      cfg.onClear && cfg.onClear();
-    });
+    clear.addEventListener("click", () => clearQuery(input));
   }
 
   // Warm up the engine in the background so the first query is snappy.
