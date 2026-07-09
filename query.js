@@ -189,12 +189,26 @@ function hideSqlReveal() {
 //   Ctrl+Return    -> run the current query
 //   Ctrl+Backspace -> clear the panel back to unfiltered
 //   Ctrl+/         -> focus the search box (ready to dictate)
+//
+// Submit order: try a DRILL command first (voice-driven navigation —
+// "drill down to the south", "drill down to the hotspot in Houston, TX").
+// If the app's onDrill handler claims it, we stop; the drill is a nav change,
+// not a SQL filter, so it must NOT hit runQuestion (which would flush nav).
+// Anything not recognized as a drill falls through to the NL->SQL path.
 function submitQuery(inputEl) {
   const q = (inputEl.value || "").trim();
-  if (q) {
-    runQuestion(q);
-    inputEl.value = ""; // empty the box so the next dictation starts clean
+  if (!q) return;
+  inputEl.value = ""; // empty the box so the next dictation starts clean
+  if (cfg.onDrill) {
+    const res = cfg.onDrill(q); // {handled, status?} | true | false
+    const handled = res === true || (res && res.handled);
+    if (handled) {
+      if (res && res.status) setStatus(res.statusKind || "ok", res.status);
+      hideSqlReveal();
+      return; // drill consumed the command; skip SQL translation
+    }
   }
+  runQuestion(q);
 }
 
 function clearQuery(inputEl) {

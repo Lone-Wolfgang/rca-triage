@@ -1284,12 +1284,141 @@ async function boot(){
   stage('rendering…');
   render();
   document.getElementById('splash').style.display='none';
+  // ---- Voice/text drill commands -------------------------------------------
+  // A small closed-vocabulary parser that turns spoken navigation into real
+  // drills, BEFORE the LLM sees the text. Two shapes:
+  //   "drill down to the south"                -> region drill (Census regions)
+  //   "drill down to the hotspot in Houston TX"-> hotspot drill (by place)
+  //   "drill down to hotspot 2"                -> hotspot drill (by rank)
+  // Returns {handled:true, status, statusKind} when it consumes the command,
+  // or false to let it fall through to the NL->SQL path. Reset/pan-out stays on
+  // the keyboard (Ctrl+Backspace), so there's no voice verb for it here.
+  const REGIONS = ['Midwest','Northeast','South','West'];
+  // spoken variants -> canonical region
+  const REGION_ALIASES = {
+    'midwest':'Midwest','mid west':'Midwest','middle west':'Midwest',
+    'northeast':'Northeast','north east':'Northeast','north-east':'Northeast',
+    'south':'South','southern':'South','the south':'South',
+    'west':'West','western':'West','the west':'West',
+  };
+  const DRILL_INTENT = /\b(drill|go|zoom|navigate|focus|take me|move)\b/i;
+
+  function normalize(s){ return (s||'').toLowerCase().replace(/[.,!?]/g,' ').replace(/\s+/g,' ').trim(); }
+
+  function handleDrillCommand(text){
+    const t = normalize(text);
+    if(!DRILL_INTENT.test(t)) return false;   // not a navigation command
+
+    // --- hotspot drill ---
+    if(/\bhot ?spot\b/.test(t)){
+      // detect fresh so the ranked list matches the current view
+      const list = detectHotspots(5);
+      if(!list.length){
+        return {handled:true, statusKind:'empty',
+          status:'No hot spots in the current view.'};
+      }
+      lastHotspots = list;                 // keep app state in sync for focusHotspot
+      // by rank: "hotspot 2" / "hotspot number two" / "second hotspot"
+      const rank = parseRank(t);
+      if(rank){
+        const h = list.find(x=>x.rank===rank);
+        if(h){ focusHotspot(h.rank);
+          return {handled:true, status:`Drilled to hot spot ${h.rank} — ${hotspotLabel(h)}.`}; }
+        return {handled:true, statusKind:'empty',
+          status:`There are only ${list.length} hot spots.`};
+      }
+      // by place: match the spoken location against each hotspot's City, ST
+      const place = extractPlace(t);
+      if(place){
+        const hit = matchHotspotByPlace(list, place);
+        if(hit){ focusHotspot(hit.rank);
+          return {handled:true, status:`Drilled to the ${hotspotLabel(hit)} hot spot.`}; }
+        return {handled:true, statusKind:'empty',
+          status:`No hot spot near "${place}" in the current view.`};
+      }
+      // said "hotspot" but no rank/place: drill to the top one
+      focusHotspot(list[0].rank);
+      return {handled:true, status:`Drilled to the top hot spot — ${hotspotLabel(list[0])}.`};
+    }
+
+    // --- region drill ---
+    for(const [alias, canon] of Object.entries(REGION_ALIASES)){
+      if(new RegExp(`\\b${alias.replace(/\s/g,'\\s')}\\b`).test(t)){
+        drillTo({level:'region', region:canon});
+        return {handled:true, status:`Drilled down to the ${canon}.`};
+      }
+    }
+
+    // intent word present but nothing matched — tell the user rather than
+    // silently sending it to the SQL translator.
+    return {handled:true, statusKind:'error',
+      status:'Say a region (Midwest, Northeast, South, West) or "hotspot in <city>".'};
+  }
+
+  const NUM_WORDS = {one:1,two:2,three:3,four:4,five:5,
+    first:1,second:2,third:3,fourth:4,fifth:5};
+  function parseRank(t){
+    let m = t.match(/hot ?spot\s+(?:number\s+)?(\d+)/) || t.match(/(\d+)(?:st|nd|rd|th)?\s+hot ?spot/);
+    if(m) return parseInt(m[1],10);
+    for(const [w,n] of Object.entries(NUM_WORDS)){
+      if(new RegExp(`\\b${w}\\b`).test(t)) return n;
+    }
+    return null;
+  }
+
+  // pull the location phrase after "in"/"near"/"at"/"around"
+  function extractPlace(t){
+    const m = t.match(/\b(?:in|near|at|around|by)\s+(.+)$/);
+    if(!m) return '';
+    // strip a trailing "region"/"area"/"hotspot" noise word
+    return m[1].replace(/\b(region|area|hot ?spot)\b/g,'').trim();
+  }
+
+  // match "houston tx" / "houston texas" / "houston" against City, ST labels
+  const ST_NAME = { // minimal name->code for spoken full state names
+    texas:'TX',california:'CA',florida:'FL','new york':'NY',illinois:'IL',
+    georgia:'GA',arizona:'AZ',pennsylvania:'PA',ohio:'OH',michigan:'MI',
+    'north carolina':'NC',washington:'WA',massachusetts:'MA',colorado:'CO',
+    tennessee:'TN',oregon:'OR',nevada:'NV',minnesota:'MN',wisconsin:'WI',
+    missouri:'MO',louisiana:'LA',indiana:'IN',maryland:'MD',virginia:'VA',
+  };
+  function matchHotspotByPlace(list, place){
+    let p = normalize(place);
+    let wantSt = '';
+    // trailing 2-letter code?
+    let m = p.match(/\b([a-z]{2})$/);
+    if(m && /^(al|ak|az|ar|ca|co|ct|de|fl|ga|hi|id|il|in|ia|ks|ky|la|me|md|ma|mi|mn|ms|mo|mt|ne|nv|nh|nj|nm|ny|nc|nd|oh|ok|or|pa|ri|sc|sd|tn|tx|ut|vt|va|wa|wv|wi|wy)$/.test(m[1])){
+      wantSt = m[1].toUpperCase(); p = p.slice(0,m.index).trim();
+    } else {
+      // trailing full state name?
+      for(const [name,code] of Object.entries(ST_NAME)){
+        if(p.endsWith(name)){ wantSt=code; p=p.slice(0,p.length-name.length).trim(); break; }
+      }
+    }
+    p = p.replace(/[, ]+$/,'').trim();
+    // exact-ish city match, optionally constrained by state
+    const cand = list.filter(h=>{
+      const city = normalize(h.city);
+      const cityOk = city && (city===p || city.includes(p) || p.includes(city));
+      const stOk = !wantSt || (h.st||'').toUpperCase()===wantSt;
+      return cityOk && stOk;
+    });
+    if(cand.length) return cand[0];
+    // state-only fallback: "drill to the hotspot in Texas"
+    if(wantSt){
+      const st = list.filter(h=>(h.st||'').toUpperCase()===wantSt);
+      if(st.length) return st[0];
+    }
+    return null;
+  }
+
   // NL query panel: engine + DB warm up now; the panel itself stays hidden
   // unless the model probe succeeds (translation needs the gateway).
   initQuery({
     getFaults: currentQueryFaults,
     impacted: impactedCustomers,
     translate: translateQuestion,
+    onDrill: handleDrillCommand,
     onResult: onQueryResult,
     onClear: onQueryClear,
     onFlush: onQueryFlush,
